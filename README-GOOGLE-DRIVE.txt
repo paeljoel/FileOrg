@@ -63,6 +63,14 @@ STEP 3  First sign-in and sharing
  4. Coworkers open the same link and sign in with that email. On iPhone: Safari > Share >
     Add to Home Screen, so it opens like an app.
 
+ONE GOOGLE DRIVE
+  * Everything is stored in the Drive of the account that created the File Org folder (the admin).
+  * On free Gmail, a file a coworker uploads would normally count against the coworker's own storage.
+    File Org fixes this: it asks Google to move ownership of every new file to the admin, and the
+    admin's File Org accepts automatically whenever the admin has File Org open. Until then the file
+    still works for everyone. Google may email the admin about each request; you can filter those
+    emails (from: drive-shares-dm-noreply@google.com) into a folder.
+
 Good to know
   * Files dropped straight into the File Org folder in Google Drive (or with Google Drive
     for desktop) are picked up automatically within about 10 minutes.
