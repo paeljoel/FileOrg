@@ -1,0 +1,10 @@
+# Render blueprint for File Org (Google Drive version): a free static site.
+services:
+  - type: web
+    name: file-org
+    runtime: static
+    staticPublishPath: .
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
