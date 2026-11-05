@@ -1085,7 +1085,7 @@ VIEWS.profile={html(){const me=S.me.id||'me';const p=S.profiles[me]||{};const fi
     </div></div>`},
   soft(){},
   bind(v){$('#switchUser',v)&&($('#switchUser',v).onclick=()=>{store.set('localMe',null);location.reload()});const t=$('#pTheme',v);t.value=store.get('theme','')||'';t.onchange=()=>{store.set('theme',t.value||null);applyTheme(t.value||null)};const pv=$('#pView',v);pv.value=S.org.view;pv.onchange=()=>{S.org.view=pv.value;store.set('orgView',pv.value)};
-    $('#saveProfile',v).onclick=async()=>{const data={position:$('#pPos',v).value.trim(),department:$('#pDept',v).value.trim(),site:$('#pSite',v).value.trim(),phone:$('#pPhone',v).value.trim(),bio:$('#pBio',v).value.trim(),updated:Date.now()};try{await DB.set('profiles/'+(S.me.id||'me'),data);S.profiles[S.me.id||'me']=data;toast('Profile saved');renderView()}catch(e){toast(dbErr(e),true)}}}};
+    $('#saveProfile',v).onclick=async()=>{const data={...(S.profiles[S.me.id||'me']||{}),position:$('#pPos',v).value.trim(),department:$('#pDept',v).value.trim(),site:$('#pSite',v).value.trim(),phone:$('#pPhone',v).value.trim(),bio:$('#pBio',v).value.trim(),updated:Date.now()};try{await DB.set('profiles/'+(S.me.id||'me'),data);S.profiles[S.me.id||'me']=data;toast('Profile saved');renderView()}catch(e){toast(dbErr(e),true)}}}};
 </script>
 <script>
 /* ================= AI upload ================= */
@@ -1385,7 +1385,7 @@ EDITORS.word={
     </div>
     <div class="find-bar" id="wFindBar" hidden><input class="input" id="wFq" placeholder="Find"><input class="input" id="wRq" placeholder="Replace with"><button class="btn sm" id="wFn">Find next</button><button class="btn sm" id="wRp">Replace</button><button class="btn sm" id="wRa">Replace all</button><span class="muted" id="wFc" style="font-size:12px"></span><button class="btn sm icon ghost" id="wFx" aria-label="Close find">${I('x')}</button></div>
     <div class="ed-body" id="wBody"><div class="paper" id="paper" contenteditable="true" spellcheck="true"><p class="muted">Loading…</p></div></div>
-    <div class="ed-status"><span id="wCount">0 words</span><span id="wPages">Page 1 of 1</span><span style="margin-left:auto">${S.mode==='local'?'Saves to the office PC folder':S.mode==='live'?'Saves to the shared company library':'Demo: saves stay in this tab'}</span></div>`;
+    <div class="ed-status"><span id="wCount">0 words</span><span id="wPages">Page 1 of 1</span><span style="margin-left:auto">${S.mode==='local'?(S.localInfo?.storage==='gdrive'?'Saves to Google Drive':'Saves to the office PC folder'):S.mode==='live'?'Saves to the shared company library':'Demo: saves stay in this tab'}</span></div>`;
     W.mountedFor=S.open.word;W.dirty=false;W.viewOnly=false;W.orig=null;this.bind(v);
     const paper=$('#paper');
     if(W.pending){paper.innerHTML=W.pending.html;W.pending=null;W.dirty=true;setSaveState('doc','Not saved');this.count()}
@@ -1554,7 +1554,7 @@ EDITORS.excel={
     <div class="fx"><input class="input ref" id="xRef" aria-label="Cell reference"><span class="fxl">fx</span><input class="input formula" id="xFormula" aria-label="Formula bar" placeholder="Value or formula, e.g. =SUM(B2:B10)"></div>
     <div class="sheet-wrap" id="xWrap"><table class="sheet" id="sheet"></table></div>
     <div class="tabs" id="xTabs"></div>
-    <div class="ed-status"><span id="xStat">Ready</span><span style="margin-left:auto">${S.mode==='local'?'Saves to the office PC folder':S.mode==='live'?'Saves to the shared company library':'Demo: saves stay in this tab'}</span></div>`;
+    <div class="ed-status"><span id="xStat">Ready</span><span style="margin-left:auto">${S.mode==='local'?(S.localInfo?.storage==='gdrive'?'Saves to Google Drive':'Saves to the office PC folder'):S.mode==='live'?'Saves to the shared company library':'Demo: saves stay in this tab'}</span></div>`;
     this.bind(v);
     if(f){X.book=blankBook();this.render();$('#xStat').textContent='Opening…';fetchFile(f).then(async c=>{if(c.kind==='sheet')X.book=c.sheets;else if(c.kind==='bin')X.book=await importBook(b642ab(c.b64),c.name||f.originalName);else if(f.ext==='csv'||c instanceof ArrayBuffer)X.book=await importBook(c,f.name);X.si=0;this.render();$('#xStat').textContent='Ready'}).catch(e=>{$('#xStat').textContent=e.message})}
     else{if(!wasFresh){const d=store.get('sheetDraft',null);X.book=d||blankBook()}this.render()}
@@ -2839,7 +2839,7 @@ function dxFontCss(f){f=String(f);const g=/times|georgia|garamond|cambria|book|s
 /* Word moves text below big floating photos to the next page; the browser has no pages, so push any text that would sit under a photo down below it */
 function dxFixOverlaps(paper){if(!paper)return;for(const im of paper.querySelectorAll('img')){if(im.style.position!=='absolute'||im.offsetHeight<150)continue;const host=im.closest('p,h1,h2,h3,td');if(!host||host.tagName==='TD')continue;
   const bottom=im.getBoundingClientRect().bottom;for(let n=host.nextElementSibling;n;n=n.nextElementSibling){const r=n.getBoundingClientRect();if(r.top>=bottom)break;
-    if(n.textContent.replace(/\s/g,'')||n.tagName==='TABLE'||n.tagName==='HR'||n.querySelector('table')){n.style.marginTop=Math.round(parseFloat(getComputedStyle(n).marginTop)+bottom-r.top+8)+'px';break}}}}
+    if(n.textContent.replace(/\s/g,'')||n.tagName==='TABLE'||n.tagName==='HR'||n.querySelector('table')){const m0=parseFloat(getComputedStyle(n).marginTop)||0;if(n.dataset.dxm===undefined)n.dataset.dxm=String(m0);n.style.marginTop=Math.round(m0+bottom-r.top+8)+'px';break}}}}
 /* apply the Word page size and margins to the editor sheet */
 function dxApplyPage(pg){const p=$('#paper');if(!p)return;if(!pg){p.style.width=p.style.padding=p.style.minHeight='';setTimeout(()=>WP.fit&&WP.fit(),0);return}
   p.style.width=pg.w+'px';p.style.minHeight=pg.h+'px';p.style.padding=`${pg.mt}px ${pg.mr}px ${pg.mb}px ${pg.ml}px`;setTimeout(()=>WP.fit&&WP.fit(),0)}
@@ -3264,7 +3264,7 @@ GM.size=n=>n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))
 /* the real file bytes, whatever mode File Org runs in */
 GM.blob=f=>Promise.race([GM.blob0(f),new Promise((_,j)=>setTimeout(()=>j(new Error('Reading the file took too long. Check the connection and try again.')),60000))]);
 GM.blob0=async f=>{let b;
-  if(GM.direct())b=await GD.download(f.id);
+  if(GM.direct()){try{b=await GD.download(f.id)}catch(e){throw new Error(e instanceof TypeError?'Could not download the file from Google Drive. Check the connection.':e.message)}}
   else if(S.mode==='local'){const r=await fetch(LocalAPI.blobUrl(f));if(!r.ok)throw new Error('Could not read the file ('+r.status+').');b=await r.blob()}
   else if(f._blob&&f.store!=='env')b=f._blob;
   else if(f.url&&f.store!=='env'){const r=await fetch(f.url);if(!r.ok)throw new Error('Could not read the file ('+r.status+').');b=await r.blob()}
@@ -3272,11 +3272,21 @@ GM.blob0=async f=>{let b;
   return new File([b],f.name,{type:b.type||(typeof gdMime==='function'?gdMime(f.name):'application/octet-stream')})};
 const b64=async blob=>{const buf=new Uint8Array(await blob.arrayBuffer());let s='';for(let i=0;i<buf.length;i+=0x8000)s+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));return btoa(s)};
 const b64s=str=>btoa(unescape(encodeURIComponent(str)));
-GM.mime=async({to,cc,subject,body,file})=>{const bd='fo_'+Math.random().toString(36).slice(2);const enc=s=>/^[\x20-\x7e]*$/.test(s)?s:`=?UTF-8?B?${b64s(s)}?=`;
-  const wrap=s=>s.replace(/.{1,76}/g,'$&\r\n');const lines=[`To: ${to.join(', ')}`,...(cc.length?[`Cc: ${cc.join(', ')}`]:[]),`Subject: ${enc(subject)}`,'MIME-Version: 1.0',`Content-Type: multipart/mixed; boundary="${bd}"`,'',
-    `--${bd}`,'Content-Type: text/plain; charset="UTF-8"','Content-Transfer-Encoding: base64','',wrap(b64s(body))];
-  if(file){const fn=file.name.replace(/"/g,'');lines.push(`--${bd}`,`Content-Type: ${file.type||'application/octet-stream'}; name="${enc(fn)}"`,`Content-Disposition: attachment; filename="${enc(fn)}"`,'Content-Transfer-Encoding: base64','',wrap(await b64(file)))}
-  lines.push(`--${bd}--`,'');return lines.join('\r\n')};
+GM.mime=async({to,cc,subject,body,file,sig})=>{const rnd=()=>'fo_'+Math.random().toString(36).slice(2);const mx=rnd(),alt=rnd(),rel=rnd();const enc=s=>/^[\x20-\x7e]*$/.test(s)?s:`=?UTF-8?B?${b64s(s)}?=`;
+  const wrap=s=>s.replace(/.{1,76}/g,'$&\r\n');
+  /* pictures in the signature travel inside the email (Gmail shows them without "load images") */
+  const inl=[];const imgMap={};if(sig){for(const k of['photo','logo']){const src=k==='logo'?(sig.showLogo?DELTECH_LOGO:''):(sig.showPhoto?sig.photo:'');const m=src&&src.match(/^data:(image\/[\w+.-]+);base64,(.*)$/);if(m){const cid=k+'.'+rnd()+'@fileorg';imgMap[k]='cid:'+cid;inl.push({cid,type:m[1],data:m[2],name:k+(m[1].includes('png')?'.png':'.jpg')})}}}
+  const textBody=body+(sig?'\n\n'+ES.text(sig):'');
+  const htmlBody=`<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:#16201C">${esc(body).replace(/\r?\n/g,'<br>')}</div>${sig?`<div style="margin-top:22px">${ES.html(sig,imgMap)}</div>`:''}`;
+  const L=[`To: ${to.join(', ')}`,...(cc.length?[`Cc: ${cc.join(', ')}`]:[]),`Subject: ${enc(subject)}`,'MIME-Version: 1.0',`Content-Type: multipart/mixed; boundary="${mx}"`,'',
+    `--${mx}`,`Content-Type: multipart/alternative; boundary="${alt}"`,'',
+    `--${alt}`,'Content-Type: text/plain; charset="UTF-8"','Content-Transfer-Encoding: base64','',wrap(b64s(textBody)),
+    `--${alt}`,`Content-Type: multipart/related; boundary="${rel}"`,'',
+    `--${rel}`,'Content-Type: text/html; charset="UTF-8"','Content-Transfer-Encoding: base64','',wrap(b64s(htmlBody))];
+  for(const im of inl)L.push(`--${rel}`,`Content-Type: ${im.type}; name="${im.name}"`,'Content-Transfer-Encoding: base64',`Content-ID: <${im.cid}>`,`Content-Disposition: inline; filename="${im.name}"`,'',wrap(im.data));
+  L.push(`--${rel}--`,'',`--${alt}--`,'');
+  if(file){const fn=file.name.replace(/"/g,'');L.push(`--${mx}`,`Content-Type: ${file.type||'application/octet-stream'}; name="${enc(fn)}"`,`Content-Disposition: attachment; filename="${enc(fn)}"`,'Content-Transfer-Encoding: base64','',wrap(await b64(file)))}
+  L.push(`--${mx}--`,'');return L.join('\r\n')};
 /* Gmail permission (asked once, the first time someone sends) */
 GM.scope='https://www.googleapis.com/auth/gmail.send';
 GM.askGmail=()=>new Promise(async(res,rej)=>{if(!window.google?.accounts?.oauth2){try{await GD.loadGsi()}catch(e){return rej(e)}}const tc=google.accounts.oauth2.initTokenClient({client_id:GD.cfg.clientId,scope:GM.scope,include_granted_scopes:true,hint:GD.email||undefined,
@@ -3285,12 +3295,17 @@ GM.askGmail=()=>new Promise(async(res,rej)=>{if(!window.google?.accounts?.oauth2
     error_callback:e=>rej(new Error(e&&e.type==='popup_failed_to_open'?'Allow pop-ups for this site, then tap Send again.':'Gmail permission was not given.'))});
   tc.requestAccessToken({prompt:''})});
 GM.hasGmail=()=>{try{return sessionStorage.getItem('fo-gm-ok')==='1'&&GD.exp>Date.now()+60000}catch(e){return false}};
-GM.sendGmail=async(msg)=>{const raw=await GM.mime(msg);if(raw.length>34*1024*1024)throw new Error('This file is too big for Gmail (25 MB limit). Send it as a Google Drive link instead.');
-  const r=await GD.rf('https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media',{method:'POST',headers:{Authorization:'Bearer '+GD.token,'content-type':'message/rfc822'},body:raw});
-  if(r.status===401||r.status===403){const j=await r.json().catch(()=>({}));const m=j.error?.message||'';
-    if(/has not been used|is disabled|accessNotConfigured/i.test(m))throw new Error('The Gmail API is not turned on yet. In Google Cloud (project FileOrg), open APIs & Services → Library → Gmail API → Enable, then try again.');
-    try{sessionStorage.removeItem('fo-gm-ok')}catch(e){}throw new Error('Gmail permission expired. Tap Send again.')}
-  if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error?.message||'Gmail could not send this ('+r.status+').')}
+GM.sendGmail=async(msg)=>{const raw=await GM.mime(msg);if(raw.length>34*1024*1024)throw new Error('This file is too big for Gmail (25 MB limit). Choose “Google Drive link” instead.');
+  if(!navigator.onLine)throw new Error('You are offline. Connect to the internet, then send again.');
+  let r;try{
+    if(raw.length<4.5*1024*1024){const b64u=btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      r=await GD.rf('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{method:'POST',headers:{Authorization:'Bearer '+GD.token,'content-type':'application/json'},body:JSON.stringify({raw:b64u})})}
+    else r=await GD.rf('https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media',{method:'POST',headers:{Authorization:'Bearer '+GD.token,'content-type':'message/rfc822'},body:raw})}
+  catch(e){throw new Error('Could not reach Gmail. Check the internet connection and send again.')}
+  if(!r.ok){const j=await r.json().catch(()=>({}));const m=j.error?.message||'';
+    if(/has not been used|is disabled|accessNotConfigured|SERVICE_DISABLED/i.test(m+JSON.stringify(j.error?.details||'')))throw new Error('Gmail sending is not turned on yet. Ask the admin to enable the Gmail API in Google Cloud (project FileOrg).');
+    if(r.status===401||r.status===403){try{sessionStorage.removeItem('fo-gm-ok')}catch(e){}throw new Error('Gmail permission expired or was not given. Tap Send again and allow “Send email on your behalf”.')}
+    throw new Error(m||'Gmail could not send this ('+r.status+').')}
   return r.json()};
 GM.driveLink=async(f,to)=>{for(const em of to){try{await GD.json(`${GAPI.drive}/files/${f.id}/permissions?sendNotificationEmail=false&supportsAllDrives=true&fields=id`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'user',role:'reader',emailAddress:em})})}catch(e){}}
   const m=await GD.json(`${GAPI.drive}/files/${f.id}?fields=webViewLink&supportsAllDrives=true`);return m.webViewLink||('https://drive.google.com/file/d/'+f.id+'/view')};
@@ -3298,7 +3313,7 @@ GM.driveLink=async(f,to)=>{for(const em of to){try{await GD.json(`${GAPI.drive}/
 async function sendByGmail(f){if(!f){toast('Save the file first, then send it.');return}
   const me=S.me?.name||'';const base=f.name.replace(/\.[^.]+$/,'');const kind={TR:'technical report',PMS:'preventive maintenance report',DR:'daily report',NR:'network report'}[f.category]||'file';
   const direct=GM.direct();const recent=GM.recent();
-  const defBody=`Good day,\n\nPlease see the attached ${kind}: ${f.name}\n\nThank you.\n\n${me}\nDeltech Parking Systems and Solutions Inc.`;
+  const sig=ES.get();const useSig=sig.on||!sig.saved;const defBody=`Good day,\n\nPlease see the attached ${kind}: ${f.name}\n\nThank you.`+(useSig?'':`\n\n${me}\nDeltech Parking Systems and Solutions Inc.`);
   let file=null,fileErr='';const ready=GM.blob(f).then(x=>{file=x;const st=document.getElementById('gm-st');if(st){st.textContent=GM.size(x.size);st.classList.add('ok')}const big=x.size>24*1024*1024;const lk=document.getElementById('gm-link');if(big&&lk){lk.checked=true}}).catch(e=>{fileErr=e.message;const st=document.getElementById('gm-st');if(st)st.textContent='Could not read'});
   const canShare=!direct&&!!navigator.canShare&&matchMedia('(pointer:coarse)').matches;
   const how=direct?`Sends from your Gmail (${esc(GD.email)}) with the file attached. The first time, Google asks you to allow File Org to send email.`
@@ -3311,17 +3326,18 @@ async function sendByGmail(f){if(!f){toast('Save the file first, then send it.')
     <div class="field"><label for="gm-su">Subject</label><input class="input" id="gm-su" value="${esc(base)}"></div>
     <div class="field"><label for="gm-bd">Message</label><textarea class="input" id="gm-bd" rows="7">${esc(defBody)}</textarea></div>
     ${direct?`<div class="gm-seg" role="radiogroup" aria-label="How to send the file"><label><input type="radio" name="gm-how" value="attach" checked> Attach the file</label><label><input type="radio" name="gm-how" value="link" id="gm-link"> Google Drive link (for big files)</label></div>`:''}
+    <div class="gm-sigrow" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="gm-sig" ${useSig?'checked':''} style="accent-color:var(--accent);width:16px;height:16px;margin:0"> Add my email signature</label><a href="#profile" data-gm-editsig style="font-size:12.5px;color:var(--accent)">${sig.saved?'Edit':'Set up'} signature</a></div>
     <div class="gm-how">${I('info')}<span>${how}</span></div><div class="gm-err" id="gm-err"></div></div>`,
     actions:[{label:'Cancel',cls:'ghost',value:()=>null},{label:direct?'Send':canShare?'Share…':'Open Gmail',cls:'primary',value:sc=>{
       const err=$('#gm-err',sc);err.textContent='';const to=GM.emails($('#gm-to',sc).value),cc=GM.emails($('#gm-cc',sc).value);
       const bad=[...to,...cc].filter(x=>!GM.valid(x));if(!to.length&&!canShare){err.textContent='Add at least one email address.';$('#gm-to',sc).focus();return false}
       if(bad.length){err.textContent='Check this address: '+bad[0];return false}
-      const msg={to,cc,subject:$('#gm-su',sc).value.trim()||base,body:$('#gm-bd',sc).value,how:(sc.querySelector('input[name="gm-how"]:checked')||{}).value||'attach'};
+      const msg={to,cc,subject:$('#gm-su',sc).value.trim()||base,body:$('#gm-bd',sc).value,how:(sc.querySelector('input[name="gm-how"]:checked')||{}).value||'attach',sig:$('#gm-sig',sc)?.checked?ES.get():null};
       if(direct){if(!GM.hasGmail()){msg.perm=GM.askGmail()/* started inside the tap, so the Google window is allowed */}return msg}
       if(canShare){if(!file){err.textContent=fileErr||'Still preparing the file… tap again in a moment.';return false}
-        const data={files:[file],title:msg.subject,text:msg.body};if(!navigator.canShare(data)){err.textContent='This phone cannot share this file type. Use Download instead.';return false}
+        const data={files:[file],title:msg.subject,text:msg.body+(msg.sig?'\n\n'+ES.text(msg.sig):'')};if(!navigator.canShare(data)){err.textContent='This phone cannot share this file type. Use Download instead.';return false}
         msg.share=navigator.share(data);return msg}
-      const u='https://mail.google.com/mail/?view=cm&fs=1'+(to.length?'&to='+encodeURIComponent(to.join(',')):'')+(cc.length?'&cc='+encodeURIComponent(cc.join(',')):'')+'&su='+encodeURIComponent(msg.subject)+'&body='+encodeURIComponent(msg.body+'\n\n(Attachment: '+f.name+')');
+      const u='https://mail.google.com/mail/?view=cm&fs=1'+(to.length?'&to='+encodeURIComponent(to.join(',')):'')+(cc.length?'&cc='+encodeURIComponent(cc.join(',')):'')+'&su='+encodeURIComponent(msg.subject)+'&body='+encodeURIComponent(msg.body+(msg.sig?'\n\n'+ES.text(msg.sig):'')+'\n\n(Attachment: '+f.name+')');
       msg.win=window.open(u,'_blank','noopener');return msg}}]});
   if(!res)return;
   try{
@@ -3332,9 +3348,10 @@ async function sendByGmail(f){if(!f){toast('Save the file first, then send it.')
     toast('Sending '+f.name+'…');let body=res.body;let attach=null;
     if(res.how==='link'){const link=await GM.driveLink(f,[...res.to,...res.cc]);body+=`\n\nOpen the file: ${link}`}
     else{await ready;if(!file)throw new Error(fileErr||'Could not read the file.');attach=file}
-    await GM.sendGmail({to:res.to,cc:res.cc,subject:res.subject,body,file:attach});
+    await GM.sendGmail({to:res.to,cc:res.cc,subject:res.subject,body,file:attach,sig:res.sig});
     GM.remember(res.to);toast('Sent to '+res.to.join(', '));logAct('emailed',f.name+' to '+res.to.join(', '),f.id)}
   catch(e){if(e&&e.name==='AbortError')return;toast(e.message||'Could not send.',true)}}
+document.addEventListener('click',e=>{if(e.target.closest('[data-gm-editsig]')){e.target.closest('.scrim')?.remove()}});
 document.addEventListener('click',e=>{const b=e.target.closest('[data-gm-add]');if(!b)return;const inp=document.getElementById('gm-to');if(!inp)return;const cur=GM.emails(inp.value);const v=b.dataset.gmAdd;if(!cur.includes(v))inp.value=[...cur,v].join(', ');b.remove();inp.focus()});
 
 /* menu + editor buttons */
@@ -3342,6 +3359,380 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-gm-add]');
 document.addEventListener('click',e=>{const b=e.target.closest('[data-gm-ed]');if(!b)return;const id={word:()=>W.fileId,sheet:()=>typeof X!=='undefined'&&X.fileId,pdf:()=>typeof P!=='undefined'&&P.fileId}[b.dataset.gmEd]?.();
   const f=id&&fileById(id);if(!f){toast('Save the file first, then send it.');return}const dirty=b.dataset.gmEd==='word'?W.dirty:false;if(dirty)toast('Sending the last saved version. Save first to include your newest changes.');sendByGmail(f)});
 new MutationObserver(()=>{for(const[k,sid]of[['word','#wShare'],['sheet','#xShare'],['pdf','#pShare']]){const s=document.querySelector(sid);if(s&&!s.parentElement.querySelector(`[data-gm-ed="${k}"]`))s.insertAdjacentHTML('afterend',`<button class="btn sm" type="button" data-gm-ed="${k}">${I('mail')}Gmail</button>`)}}).observe(document.body,{childList:true,subtree:true});
+</script>
+<script>
+/* ================= Real .docx writer =================
+   Turns the editor page into a genuine Word file (paragraphs, runs, tables, pictures, lines, header),
+   so Gmail, Google Drive, LibreOffice and phones all show it, not only desktop Word. */
+const DW={};
+/* --- tiny zip (deflate when the browser can, otherwise stored) --- */
+DW.crcT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+DW.crc=u=>{let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=DW.crcT[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+DW.deflate=async u=>{if(typeof CompressionStream==='undefined')return null;try{return new Uint8Array(await new Response(new Blob([u]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer())}catch(e){return null}};
+DW.zip=async files=>{const te=new TextEncoder();const parts=[],cd=[];let off=0;
+  for(const[name,data]of files){const nm=te.encode(name);const raw=typeof data==='string'?te.encode(data):data;const crc=DW.crc(raw);
+    let comp=/\.(png|jpe?g|gif)$/i.test(name)?null:await DW.deflate(raw);const method=comp&&comp.length<raw.length?8:0;if(!method)comp=raw;
+    const h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,method,true);h.setUint16(10,0,true);h.setUint16(12,0x21,true);
+    h.setUint32(14,crc,true);h.setUint32(18,comp.length,true);h.setUint32(22,raw.length,true);h.setUint16(26,nm.length,true);h.setUint16(28,0,true);
+    parts.push(new Uint8Array(h.buffer),nm,comp);
+    const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(10,method,true);c.setUint16(14,0x21,true);
+    c.setUint32(16,crc,true);c.setUint32(20,comp.length,true);c.setUint32(24,raw.length,true);c.setUint16(28,nm.length,true);c.setUint32(42,off,true);cd.push(new Uint8Array(c.buffer),nm);
+    off+=30+nm.length+comp.length}
+  const cdSize=cd.reduce((a,b)=>a+b.length,0);const e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cdSize,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cd,new Uint8Array(e.buffer)],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'})};
+
+/* --- helpers --- */
+const dx=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'');
+const TW=px=>Math.round(px*15);              /* CSS px -> twips */
+const EMU=px=>Math.round(px*9525);           /* CSS px -> EMU */
+DW.hex=c=>{const m=String(c||'').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);if(!m)return null;if(m[4]!==undefined&&+m[4]<0.05)return null;return[m[1],m[2],m[3]].map(x=>(+x).toString(16).padStart(2,'0')).join('').toUpperCase()};
+DW.font=ff=>{const f=String(ff||'').split(',')[0].replace(/["']/g,'').trim();return({Carlito:'Calibri',Caladea:'Cambria','Liberation Sans':'Arial','Liberation Serif':'Times New Roman','Liberation Mono':'Courier New',Geist:'Calibri','sans-serif':'Calibri',serif:'Times New Roman',monospace:'Courier New','system-ui':'Calibri'})[f]||f||'Calibri'};
+DW.bdr=(cs,side)=>{const w=parseFloat(cs['border'+side+'Width'])||0;const st=cs['border'+side+'Style'];if(!w||st==='none'||st==='hidden')return null;
+  const col=DW.hex(cs['border'+side+'Color'])||'000000';const val=st==='double'?'double':st==='dashed'?'dashed':st==='dotted'?'dotted':'single';return{val,sz:Math.max(2,Math.min(96,Math.round(w*0.75*8))),color:col}};
+DW.deco=el=>{let u=false,s=false;for(let n=el;n&&n.nodeType===1&&!n.matches('#dwRoot');n=n.parentElement){const d=getComputedStyle(n).textDecorationLine||'';if(/underline/.test(d))u=true;if(/line-through/.test(d))s=true}return{u,s}};
+
+DW.build=async(html,opt={})=>{
+  /* lay the page out off-screen with the editor's own styles, so sizes and positions are exactly what you see */
+  const host=document.createElement('div');host.style.cssText='position:fixed;left:-20000px;top:0;visibility:hidden;pointer-events:none';
+  const pw=opt.pageW||816;const pad=opt.pad||[96,96,96,96];
+  host.innerHTML=`<div class="paper" id="dwRoot" style="width:${pw}px;padding:${pad.join('px ')}px;min-height:0;margin:0;zoom:1">${html}</div>`;document.body.appendChild(host);
+  const root=host.firstElementChild;
+  /* screen-only spacing added under big photos is not part of the real document */
+  $$('[data-dxm]',root).forEach(n=>{n.style.marginTop=n.dataset.dxm+'px'});$$('img',root).forEach(i=>i.removeAttribute('loading'));
+  await Promise.all($$('img',root).map(i=>i.complete?0:new Promise(r=>{i.onload=i.onerror=r;setTimeout(r,4000)})));
+  const contentW=pw-pad[1]-pad[3];
+  const media=[];const rels=[];let rid=10,pid=1;const imgCache=new Map();
+  const addRel=(type,target,ext)=>{const id='rId'+(rid++);rels.push(`<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${dx(target)}"${ext?' TargetMode="External"':''}/>`);return id};
+  const imgRel=async(img)=>{const src=img.currentSrc||img.src;if(imgCache.has(src))return imgCache.get(src);let bytes,ext;
+    try{const m=src.match(/^data:image\/(png|jpe?g|gif);base64,(.*)$/i);
+      if(m){ext=m[1].toLowerCase().replace('jpeg','jpg');bytes=Uint8Array.from(atob(m[2]),c=>c.charCodeAt(0))}
+      else{/* anything else (webp, svg, links): redraw as PNG */const c=document.createElement('canvas');c.width=img.naturalWidth||img.width||1;c.height=img.naturalHeight||img.height||1;c.getContext('2d').drawImage(img,0,0);
+        const b64=c.toDataURL('image/png').split(',')[1];bytes=Uint8Array.from(atob(b64),ch=>ch.charCodeAt(0));ext='png'}}
+    catch(e){imgCache.set(src,null);return null}
+    const name=`image${media.length+1}.${ext}`;media.push([`word/media/${name}`,bytes]);const id=addRel('image','media/'+name);imgCache.set(src,id);return id};
+
+  const rPr=(el,extra={})=>{const cs=getComputedStyle(el);const o=[];const f=DW.font(cs.fontFamily);o.push(`<w:rFonts w:ascii="${dx(f)}" w:hAnsi="${dx(f)}" w:cs="${dx(f)}" w:eastAsia="${dx(f)}"/>`);
+    if(+cs.fontWeight>=600)o.push('<w:b/><w:bCs/>');if(cs.fontStyle==='italic')o.push('<w:i/><w:iCs/>');const dd=DW.deco(el);if(dd.s)o.push('<w:strike/>');
+    if(cs.textTransform==='uppercase')o.push('<w:caps/>');if(cs.fontVariantCaps==='small-caps'||cs.fontVariant==='small-caps')o.push('<w:smallCaps/>');
+    const col=DW.hex(cs.color);if(col&&col!=='000000')o.push(`<w:color w:val="${col}"/>`);
+    const sz=Math.max(2,Math.round(parseFloat(cs.fontSize)*0.75*2));o.push(`<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/>`);
+    let bg=null;for(let n=el;n&&!n.matches('#dwRoot')&&getComputedStyle(n).display.startsWith('inline');n=n.parentElement){bg=DW.hex(getComputedStyle(n).backgroundColor);if(bg)break}
+    if(bg)o.push(`<w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>`);if(dd.u)o.push('<w:u w:val="single"/>');
+    const va=cs.verticalAlign;if(va==='super')o.push('<w:vertAlign w:val="superscript"/>');if(va==='sub')o.push('<w:vertAlign w:val="subscript"/>');
+    return`<w:rPr>${o.join('')}</w:rPr>`};
+  const textRuns=(txt,el)=>{const pr=rPr(el);const out=[];const parts=txt.split(/(\t)/);for(const p of parts){if(p==='\t')out.push(`<w:r>${pr}<w:tab/></w:r>`);else if(p)out.push(`<w:r>${pr}<w:t xml:space="preserve">${dx(p)}</w:t></w:r>`)}return out.join('')};
+
+  const drawing=async(img,blockEl)=>{const id=await imgRel(img);if(!id)return'';const r=img.getBoundingClientRect();const w=Math.max(1,Math.round(r.width)),h=Math.max(1,Math.round(r.height));
+    const cs=getComputedStyle(img);const n=pid++;const rot=(+img.dataset.rot||0)*60000;const flipH=+img.dataset.fx<0?' flipH="1"':'';
+    const graphic=`<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${n}" name="Picture ${n}" descr="${dx(img.alt||'')}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm${rot?` rot="${rot}"`:''}${flipH}><a:off x="0" y="0"/><a:ext cx="${EMU(w)}" cy="${EMU(h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${img.style.border?'<a:ln w="9525"><a:solidFill><a:srgbClr val="333333"/></a:solidFill></a:ln>':''}</pic:spPr></pic:pic></a:graphicData></a:graphic>`;
+    const ext=`<wp:extent cx="${EMU(w)}" cy="${EMU(h)}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>`;const doc=`<wp:docPr id="${n}" name="Picture ${n}" descr="${dx(img.alt||'')}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>`;
+    const abs=cs.position==='absolute',fl=cs.float==='left'||cs.float==='right';
+    if(!abs&&!fl)return`<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">${ext}${doc}${graphic}</wp:inline></w:drawing></w:r>`;
+    const br=blockEl.getBoundingClientRect(),rr=root.getBoundingClientRect();const left=Math.round(r.left-rr.left-pad[3]),top=Math.round(r.top-br.top);const behind=abs&&(+cs.zIndex<0);
+    const wrap=abs?'<wp:wrapNone/>':'<wp:wrapSquare wrapText="bothSides"/>';
+    const posH=fl?`<wp:positionH relativeFrom="column"><wp:align>${cs.float}</wp:align></wp:positionH>`:`<wp:positionH relativeFrom="column"><wp:posOffset>${EMU(left)}</wp:posOffset></wp:positionH>`;
+    return`<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="${2000+n}" behindDoc="${behind?1:0}" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/>${posH}<wp:positionV relativeFrom="paragraph"><wp:posOffset>${EMU(Math.max(0,fl?0:top))}</wp:posOffset></wp:positionV>${ext}${wrap}${doc}${graphic}</wp:anchor></w:drawing></w:r>`};
+  const lineShape=(sp,blockEl)=>{const r=sp.getBoundingClientRect(),br=blockEl.getBoundingClientRect(),rr=root.getBoundingClientRect();const w=Math.max(4,Math.round(r.width));const cs=getComputedStyle(sp);
+    const lw=Math.max(1,parseFloat(cs.borderTopWidth)||1);const col=DW.hex(cs.borderTopColor)||'000000';const n=pid++;
+    return`<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="${2000+n}" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>${EMU(Math.round(r.left-rr.left-pad[3]))}</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>${EMU(Math.max(0,Math.round(r.top-br.top)))}</wp:posOffset></wp:positionV><wp:extent cx="${EMU(w)}" cy="0"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="${n}" name="Line ${n}"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:cNvCnPr/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${EMU(w)}" cy="0"/></a:xfrm><a:prstGeom prst="line"><a:avLst/></a:prstGeom><a:ln w="${EMU(lw)}"><a:solidFill><a:srgbClr val="${col}"/></a:solidFill></a:ln></wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`};
+
+  /* inline content of one block -> runs */
+  const inline=async(node,blockEl)=>{let out='';for(const c of node.childNodes){
+      if(c.nodeType===3){let t=c.nodeValue;const ws=getComputedStyle(c.parentElement).whiteSpace;if(!/pre/.test(ws))t=t.replace(/[\r\n\s]+/g,' ');if(t)out+=textRuns(t,c.parentElement);continue}
+      if(c.nodeType!==1)continue;const tag=c.tagName;const cs=getComputedStyle(c);if(cs.display==='none')continue;
+      if(tag==='BR'){/* a final <br> only keeps an empty line visible on screen */let nx=c.nextSibling;while(nx&&nx.nodeType===3&&!nx.nodeValue.trim())nx=nx.nextSibling;if(!nx&&c.parentElement===blockEl)continue;out+='<w:r><w:br/></w:r>';continue}
+      if(tag==='IMG'){out+=await drawing(c,blockEl);continue}
+      if(c.dataset.dx==='line'){out+=lineShape(c,blockEl);continue}
+      if(tag==='A'&&c.getAttribute('href')&&/^(https?:|mailto:)/i.test(c.getAttribute('href'))){const id=addRel('hyperlink',c.getAttribute('href'),true);out+=`<w:hyperlink r:id="${id}">${(await inline(c,blockEl)).replace(/<w:rPr>/g,'<w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/>')}</w:hyperlink>`;continue}
+      if(tag==='TABLE'||/^(block|flex|grid|list-item|table)$/.test(cs.display)&&tag!=='SPAN'){out+=await inline(c,blockEl);continue}
+      out+=await inline(c,blockEl)}
+    return out};
+  const pPr=(el,o={})=>{const cs=getComputedStyle(el);const a=[];if(o.style)a.push(`<w:pStyle w:val="${o.style}"/>`);if(o.num)a.push(`<w:numPr><w:ilvl w:val="${o.num.lvl}"/><w:numId w:val="${o.num.id}"/></w:numPr>`);
+    const b=['Top','Left','Bottom','Right'].map(s=>[s,DW.bdr(cs,s)]).filter(x=>x[1]);
+    if(b.length)a.push('<w:pBdr>'+b.map(([s,v])=>`<w:${s.toLowerCase()} w:val="${v.val}" w:sz="${v.sz}" w:space="${Math.max(0,Math.min(31,Math.round((parseFloat(cs['padding'+s])||0)*0.75)))}" w:color="${v.color}"/>`).join('')+'</w:pBdr>');
+    const bg=DW.hex(cs.backgroundColor);if(bg&&bg!=='FFFFFF')a.push(`<w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>`);
+    const fs=parseFloat(cs.fontSize)||14.67;const lh=parseFloat(cs.lineHeight);const before=TW(o.mt??(parseFloat(cs.marginTop)||0)),after=TW(o.mb??(parseFloat(cs.marginBottom)||0));
+    a.push(`<w:spacing w:before="${Math.max(0,before)}" w:after="${Math.max(0,after)}" ${isNaN(lh)?'w:line="240" w:lineRule="auto"':`w:line="${Math.max(120,Math.round(lh/fs/1.15*240))}" w:lineRule="auto"`}/>`);
+    const ml=(parseFloat(cs.marginLeft)||0)+(o.indAdd||0),mr=parseFloat(cs.marginRight)||0,ti=parseFloat(cs.textIndent)||0;
+    if(ml||mr||ti)a.push(`<w:ind w:left="${TW(Math.max(0,ml))}" w:right="${TW(Math.max(0,mr))}"${ti>0?` w:firstLine="${TW(ti)}"`:ti<0?` w:hanging="${TW(-ti)}"`:''}/>`);
+    const al=cs.textAlign;const jc=al==='center'?'center':al==='right'||al==='end'?'right':al==='justify'?'both':null;if(jc)a.push(`<w:jc w:val="${jc}"/>`);
+    if(o.keep)a.push('<w:keepNext/>');a.push(rPr(el).replace('<w:rPr>','<w:rPr>'));return`<w:pPr>${a.join('')}</w:pPr>`};
+  const emptyP=el=>`<w:p>${pPr(el)}</w:p>`;
+  let lists=[];
+  const blocks=async(container,ctx={})=>{let out='';let runBuf=[];
+    const flush=async()=>{if(!runBuf.length)return;const tmp=runBuf;runBuf=[];if(tmp.every(n=>n.nodeType===3&&!n.nodeValue.trim()))return;
+      const wrap=document.createElement('span');tmp[0].before(wrap);tmp.forEach(n=>wrap.appendChild(n));out+=`<w:p>${pPr(container)}${await inline(wrap,container)}</w:p>`};
+    for(const c of [...container.childNodes]){
+      if(c.nodeType===3||(c.nodeType===1&&/^(SPAN|B|I|U|STRONG|EM|A|IMG|BR|SUP|SUB|FONT|S|STRIKE|MARK|SMALL|CODE)$/.test(c.tagName)&&!c.classList.contains('fo-textbox'))){runBuf.push(c);continue}
+      await flush();if(c.nodeType!==1)continue;const tag=c.tagName;const cs=getComputedStyle(c);if(cs.display==='none')continue;
+      if(tag==='TABLE'){out+=await table(c,ctx);continue}
+      if(tag==='HR'){out+=c.classList.contains('pb')?'<w:p><w:r><w:br w:type="page"/></w:r></w:p>':`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="999999"/></w:pBdr></w:pPr></w:p>`;continue}
+      if(tag==='UL'||tag==='OL'){const lvl=ctx.lvl===undefined?0:ctx.lvl+1;for(const li of c.children){if(li.tagName!=='LI')continue;
+          const sub=[...li.children].filter(x=>x.tagName==='UL'||x.tagName==='OL');sub.forEach(s=>s.remove());const has=[...li.children].some(x=>/^(P|DIV|H\d)$/.test(x.tagName));
+          if(has){out+=await blocks(li,{...ctx,lvl,num:{id:tag==='UL'?1:2,lvl}})}else out+=`<w:p>${pPr(li,{num:{id:tag==='UL'?1:2,lvl:Math.min(lvl,8)}})}${await inline(li,li)}</w:p>`;
+          for(const s of sub){li.appendChild(s);out+=await blocks(li.lastChild.parentElement===li?(()=>{const w=document.createElement('div');w.appendChild(s);li.appendChild(w);return w})():li,{...ctx,lvl})}}continue}
+      if(c.dataset&&c.dataset.dx==='header'){ctx.onHeader&&ctx.onHeader(c);continue}
+      if(c.dataset&&c.dataset.dx==='footer'){ctx.onFooter&&ctx.onFooter(c);continue}
+      const hasBlockKids=[...c.children].some(k=>/^(P|DIV|H1|H2|H3|H4|H5|H6|TABLE|UL|OL|BLOCKQUOTE|PRE|HR|SECTION|ARTICLE)$/.test(k.tagName)&&!k.classList.contains('fo-textbox'));
+      if(hasBlockKids&&tag!=='P'){out+=await blocks(c,ctx);continue}
+      const style=/^H([1-3])$/.test(tag)?'Heading'+tag[1]:null;const runs=await inline(c,c);
+      out+=`<w:p>${pPr(c,{style,num:ctx.num,keep:!!style})}${runs}</w:p>`}
+    await flush();return out};
+  const table=async(t,ctx)=>{const rows=[...t.rows];if(!rows.length)return'';const tr0=t.getBoundingClientRect();
+    /* column grid from cell edges */
+    const edges=new Set([0]);rows.forEach(r=>[...r.cells].forEach(c=>{const q=c.getBoundingClientRect();edges.add(Math.round(q.left-tr0.left));edges.add(Math.round(q.right-tr0.left))}));
+    const xs=[...edges].sort((a,b)=>a-b).filter((x,i,arr)=>i===0||x-arr[i-1]>2);const grid=xs.slice(1).map((x,i)=>Math.max(8,x-xs[i]));
+    const colAt=x=>{let best=0,d=1e9;xs.forEach((v,i)=>{const dd=Math.abs(v-x);if(dd<d){d=dd;best=i}});return best};
+    const cs=getComputedStyle(t);const ml=parseFloat(cs.marginLeft)||0;const center=cs.marginLeft===cs.marginRight&&ml>2&&Math.abs(tr0.left+tr0.width/2-(root.getBoundingClientRect().left+pw/2))<4;
+    let x=`<w:tbl><w:tblPr><w:tblW w:w="${TW(tr0.width)}" w:type="dxa"/>${center?'<w:jc w:val="center"/>':ml?`<w:tblInd w:w="${TW(ml)}" w:type="dxa"/>`:''}<w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="60" w:type="dxa"/><w:right w:w="60" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${grid.map(g=>`<w:gridCol w:w="${TW(g)}"/>`).join('')}</w:tblGrid>`;
+    const spans=[];/* rowspan bookkeeping: col index -> rows left */
+    for(let ri=0;ri<rows.length;ri++){const r=rows[ri];const h=r.getBoundingClientRect().height;x+=`<w:tr><w:trPr><w:trHeight w:val="${TW(h)}" w:hRule="atLeast"/></w:trPr>`;
+      const cells=[...r.cells].map(c=>{const q=c.getBoundingClientRect();return{c,a:colAt(q.left-tr0.left),b:colAt(q.right-tr0.left)}});
+      let col=0;const emit=async(cell)=>{const c=cell.c;const ccs=getComputedStyle(c);const n=Math.max(1,cell.b-cell.a);const w=grid.slice(cell.a,cell.b).reduce((s,v)=>s+v,0);
+        const bd=['Top','Left','Bottom','Right'].map(s=>{const v=DW.bdr(ccs,s);return`<w:${s.toLowerCase()} ${v?`w:val="${v.val}" w:sz="${v.sz}" w:space="0" w:color="${v.color}"`:'w:val="nil"'}/>`}).join('');
+        const bg=DW.hex(ccs.backgroundColor);const va=ccs.verticalAlign==='middle'?'center':ccs.verticalAlign==='bottom'?'bottom':'top';const rs=c.rowSpan>1;
+        if(rs)for(let k=cell.a;k<cell.b;k++)spans[k]={left:c.rowSpan-1,n,w,first:k===cell.a,cs:ccs};
+        const pad=k=>TW(parseFloat(ccs['padding'+k])||0);
+        let inner=await blocks(c,{...ctx,cell:true});if(!/<w:p[ >]/.test(inner))inner='<w:p/>';
+        x+=`<w:tc><w:tcPr><w:tcW w:w="${TW(w)}" w:type="dxa"/>${n>1?`<w:gridSpan w:val="${n}"/>`:''}${rs?'<w:vMerge w:val="restart"/>':''}<w:tcBorders>${bd}</w:tcBorders>${bg?`<w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>`:''}<w:tcMar><w:top w:w="${pad('Top')}" w:type="dxa"/><w:left w:w="${pad('Left')}" w:type="dxa"/><w:bottom w:w="${pad('Bottom')}" w:type="dxa"/><w:right w:w="${pad('Right')}" w:type="dxa"/></w:tcMar><w:vAlign w:val="${va}"/></w:tcPr>${inner}</w:tc>`};
+      const cont=k=>{const s=spans[k];x+=`<w:tc><w:tcPr><w:tcW w:w="${TW(s.w)}" w:type="dxa"/>${s.n>1?`<w:gridSpan w:val="${s.n}"/>`:''}<w:vMerge/></w:tcPr><w:p/></w:tc>`};
+      for(const cell of cells){while(col<cell.a){if(spans[col]&&spans[col].left>0&&spans[col].first){const s=spans[col];cont(col);s.left--;col+=s.n;for(let k=col-s.n+1;k<col;k++)if(spans[k])spans[k].left--}else col++}
+        await emit(cell);col=cell.b}
+      while(col<grid.length){if(spans[col]&&spans[col].left>0&&spans[col].first){const s=spans[col];cont(col);s.left--;col+=s.n}else col++}
+      x+='</w:tr>'}
+    return x+'</w:tbl>'+(ctx.cell?'':'<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr></w:p>')};
+
+  let headerEl=null,footerEl=null;
+  const body=await blocks(root,{onHeader:h=>headerEl=h,onFooter:f=>footerEl=f});
+  const hdrs=[];const partXml=async(el,kind)=>{const saveRels=rels.length;const x=await blocks(el,{});return x||'<w:p/>'};
+  let headerXml=null,footerXml=null;
+  if(headerEl){headerXml=await partXml(headerEl,'hdr')}if(footerEl){footerXml=await partXml(footerEl,'ftr')}
+  host.remove();
+  /* header/footer get their own copies of the picture links */
+  const docRels=[...rels];
+  const NS='xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 wp14"';
+  const ph=opt.pageH||1056;const hdrDist=Math.max(0,Math.round(pad[0]/2));
+  const sect=`<w:sectPr>${headerXml?'<w:headerReference w:type="default" r:id="rIdH1"/>':''}${footerXml?'<w:footerReference w:type="default" r:id="rIdF1"/>':''}<w:pgSz w:w="${TW(pw)}" w:h="${TW(ph)}"${pw>ph?' w:orient="landscape"':''}/><w:pgMar w:top="${TW(pad[0])}" w:right="${TW(pad[1])}" w:bottom="${TW(pad[2])}" w:left="${TW(pad[3])}" w:header="${TW(hdrDist)}" w:footer="${TW(hdrDist)}" w:gutter="0"/><w:cols w:space="720"/></w:sectPr>`;
+  const docXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${NS}><w:body>${body||'<w:p/>'}${sect}</w:body></w:document>`;
+  const relsXml=r=>`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${r.join('')}</Relationships>`;
+  const docRelList=[`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`,`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>`,`<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>`,
+    ...(headerXml?['<Relationship Id="rIdH1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>']:[]),...(footerXml?['<Relationship Id="rIdF1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>']:[]),...docRels];
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="en-PH"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
+    <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>
+    ${[1,2,3].map(n=>`<w:style w:type="paragraph" w:styleId="Heading${n}"><w:name w:val="heading ${n}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val="${n-1}"/></w:pPr></w:style>`).join('')}
+    <w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style></w:styles>`;
+  const lvl=(fmt,i)=>`<w:lvl w:ilvl="${i}"><w:start w:val="1"/><w:numFmt w:val="${fmt==='bullet'?'bullet':i%3===1?'lowerLetter':i%3===2?'lowerRoman':'decimal'}"/><w:lvlText w:val="${fmt==='bullet'?['•','◦','▪'][i%3]:'%'+(i+1)+'.'}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="${720+i*360}" w:hanging="360"/></w:pPr></w:lvl>`;
+  const numbering=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>${[...Array(9)].map((_,i)=>lvl('bullet',i)).join('')}</w:abstractNum><w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>${[...Array(9)].map((_,i)=>lvl('num',i)).join('')}</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num></w:numbering>`;
+  const settings=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:zoom w:percent="100"/><w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
+  const ct=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="gif" ContentType="image/gif"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${headerXml?'<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>':''}${footerXml?'<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>':''}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
+  const now=new Date().toISOString().replace(/\.\d+Z$/,'Z');const author=dx((typeof S!=='undefined'&&S.me&&S.me.name)||'File Org');
+  const core=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${dx(opt.title||'')}</dc:title><dc:creator>${author}</dc:creator><cp:lastModifiedBy>${author}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`;
+  const app=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>File Org</Application></Properties>`;
+  const files=[['[Content_Types].xml',ct],['_rels/.rels',relsXml(['<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>','<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>','<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>'])],
+    ['docProps/core.xml',core],['docProps/app.xml',app],['word/document.xml',docXml],['word/_rels/document.xml.rels',relsXml(docRelList)],['word/styles.xml',styles],['word/numbering.xml',numbering],['word/settings.xml',settings]];
+  if(headerXml){files.push(['word/header1.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${NS}>${headerXml}</w:hdr>`],['word/_rels/header1.xml.rels',relsXml(docRels)])}
+  if(footerXml){files.push(['word/footer1.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${NS}>${footerXml}</w:ftr>`],['word/_rels/footer1.xml.rels',relsXml(docRels)])}
+  for(const m of media)files.push(m);
+  return DW.zip(files)};
+
+/* page size and margins of what is on screen now (or of the document being saved) */
+DW.page=()=>{const p=$('#paper');const pg={pageW:816,pageH:1056,pad:[96,96,96,96]};if(!p)return pg;
+  pg.pageW=parseFloat(p.style.width)||(p.classList.contains('landscape')?1056:816);pg.pageH=parseFloat(p.style.minHeight)||(p.classList.contains('landscape')?816:1056);
+  const cs=getComputedStyle(p);pg.pad=['Top','Right','Bottom','Left'].map(s=>parseFloat(cs['padding'+s])||96);return pg};
+
+/* use it for every Word export; the old way stays as a safety net */
+{const _old=docExport;docExport=async function(html,base){try{const blob=await DW.build(html,{...DW.page(),title:base});return{blob,name:base+'.docx'}}catch(e){console.warn('Word writer fell back to the simple export:',e);return _old(html,base)}}}
+</script>
+<style>
+/* ================= Premium notifications: pop-ups + notification bell ================= */
+.toasts{gap:10px;align-items:flex-end;pointer-events:none}
+@media (min-width:861px){.toasts{bottom:calc(92px + env(safe-area-inset-bottom,0px))}}
+.toast.nt{pointer-events:auto;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start;width:min(380px,calc(100vw - 24px));max-width:none;padding:12px 12px 14px 14px;border-radius:14px;
+  background:var(--panel);color:var(--ink);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.06),0 18px 40px -12px rgba(10,30,22,.35);position:relative;overflow:hidden;
+  animation:ntIn .42s var(--ease-spring,cubic-bezier(.34,1.56,.64,1)) both;font-size:13.5px;line-height:1.4}
+.toast.nt.out{animation:ntOut .26s ease-in both}
+@keyframes ntIn{from{opacity:0;transform:translateY(16px) scale(.96)}}
+@keyframes ntOut{to{opacity:0;transform:translateX(24px) scale(.97)}}
+.toast.nt .ic{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;flex:none}
+.toast.nt .ic svg{width:17px;height:17px}
+.toast.nt.ok .ic{background:color-mix(in srgb,#2B7A4B 14%,transparent);color:#2B7A4B}
+.toast.nt.err .ic{background:color-mix(in srgb,#C2410C 14%,transparent);color:#C2410C}
+.toast.nt.info .ic{background:var(--accent-soft);color:var(--accent)}
+.toast.nt.busy .ic{background:var(--accent-soft);color:var(--accent)}
+.toast.nt.busy .ic svg{animation:ntSpin 1s linear infinite}
+@keyframes ntSpin{to{transform:rotate(360deg)}}
+.toast.nt .tt{font-weight:600;margin-bottom:1px}
+.toast.nt .tm{color:var(--ink-2);word-break:break-word}
+.toast.nt .x{border:0;background:none;color:var(--ink-3);width:26px;height:26px;border-radius:8px;cursor:pointer;display:grid;place-items:center;margin:-2px -2px 0 0}
+.toast.nt .x:hover{background:var(--panel-2);color:var(--ink)}
+.toast.nt .bar{position:absolute;left:0;bottom:0;height:3px;background:currentColor;opacity:.35;transform-origin:left;animation:ntBar linear forwards}
+.toast.nt.ok .bar{color:#2B7A4B}.toast.nt.err .bar{color:#C2410C}.toast.nt.info .bar,.toast.nt.busy .bar{color:var(--accent)}
+.toast.nt:hover .bar{animation-play-state:paused}
+@keyframes ntBar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+.toast.nt .act{margin-top:8px}
+@media (max-width:860px){.toasts{align-items:center}.toast.nt{width:calc(100vw - 24px)}@keyframes ntOut{to{opacity:0;transform:translateY(-12px) scale(.97)}}}
+@media (prefers-reduced-motion:reduce){.toast.nt,.toast.nt.out{animation:none}.toast.nt .bar{display:none}}
+
+/* bell + panel */
+.nbell{position:relative}
+.nbell .nb-dot{position:absolute;top:3px;right:3px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#E5484D;color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center;box-shadow:0 0 0 2px var(--panel);animation:popIn .3s var(--ease-spring,ease-out)}
+.nbell.ring svg{animation:nbRing .9s ease-in-out}
+@keyframes nbRing{0%,100%{transform:rotate(0)}15%{transform:rotate(14deg)}30%{transform:rotate(-12deg)}45%{transform:rotate(9deg)}60%{transform:rotate(-6deg)}75%{transform:rotate(3deg)}}
+.npanel{position:fixed;z-index:92;top:60px;right:16px;width:min(400px,calc(100vw - 24px));max-height:min(560px,calc(100dvh - 90px));display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 60px -16px rgba(10,30,22,.4);overflow:hidden;animation:popIn .22s var(--ease-out,ease-out) both;transform-origin:top right}
+.npanel .nh{display:flex;align-items:center;gap:8px;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.npanel .nh h3{margin:0;font-size:15px;flex:1}
+.npanel .nh .btn{height:30px}
+.npanel .nf{display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.npanel .nf button{border:1px solid var(--line);background:none;border-radius:99px;padding:4px 11px;font-size:12px;color:var(--ink-2);cursor:pointer}
+.npanel .nf button.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.npanel .nl{overflow:auto;flex:1;overscroll-behavior:contain}
+.npanel .ni{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;padding:11px 16px;border:0;background:none;width:100%;text-align:left;cursor:pointer;color:var(--ink);border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);position:relative;transition:background .15s}
+.npanel .ni:hover{background:var(--panel-2)}
+.npanel .ni.unread::before{content:"";position:absolute;left:6px;top:50%;width:6px;height:6px;border-radius:50%;background:var(--accent);transform:translateY(-50%)}
+.npanel .ni .av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:600;color:#fff;flex:none;overflow:hidden}
+.npanel .ni .av img{width:100%;height:100%;object-fit:cover}
+.npanel .ni .av.ic{background:var(--accent-soft);color:var(--accent)}.npanel .ni .av.ic svg{width:17px;height:17px}
+.npanel .ni .t{font-size:13px;line-height:1.4}.npanel .ni .t b{font-weight:600}
+.npanel .ni .s{font-size:12px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.npanel .ni .w{font-size:11px;color:var(--ink-3);white-space:nowrap}
+.npanel .ne{padding:40px 20px;text-align:center;color:var(--ink-3);font-size:13px}
+.npanel .ne svg{width:34px;height:34px;opacity:.5;margin-bottom:8px}
+.npanel .nfoot{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-3)}
+.nscrim{position:fixed;inset:0;z-index:91;background:transparent}
+@media (max-width:860px){.npanel{top:auto;bottom:0;left:0;right:0;width:100%;max-height:82dvh;border-radius:18px 18px 0 0;padding-bottom:env(safe-area-inset-bottom,0px);animation:sheetUp .34s var(--ease-out,ease-out) both}
+  .npanel::before{content:"";display:block;width:38px;height:5px;border-radius:3px;background:var(--line-2,#ccc);margin:8px auto 0}.nscrim{background:rgba(8,14,12,.4)}}
+</style>
+<script>
+/* ---------- pop-ups ---------- */
+ICONS.bell=ICONS.bell||'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>';
+const NT={ic:{ok:'<path d="M20 6 9 17l-5-5"/>',err:'<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>',info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',busy:'<path d="M21 12a9 9 0 1 1-6.2-8.56"/>'},
+  svg:p=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`};
+NT.friendly=m=>{m=String(m||'');if(/^(load failed|failed to fetch|networkerror|network error|the network connection was lost)/i.test(m.trim()))return'Connection problem. Check the internet and try again.';return m};
+NT.kind=(m,bad)=>bad?'err':/…$|\.\.\.$/.test(m)?'busy':/^(saved|sent|copied|done|added|removed|deleted|moved|renamed|restored|uploaded|exported|signed|ai reading is on|photos|background removed|format copied|picture copied|profile saved|signature)/i.test(m)||/ (saved|sent|added|removed|moved|restored|uploaded|exported)\b/i.test(m)?'ok':'info';
+NT.title={ok:'Done',err:'Something went wrong',info:'Note',busy:'Working on it'};
+toast=function(msg,bad,opt={}){const box=$('#toasts');if(!box)return;msg=NT.friendly(msg);const k=opt.kind||NT.kind(msg,bad);
+  const all=[...box.children];if(all.length>=4)all[0].remove();
+  /* a "…" (in progress) message is replaced by the next message instead of piling up */
+  const last=box.lastElementChild;if(last&&last.classList.contains('busy')&&!opt.keep)last.remove();
+  const t=document.createElement('div');t.className='toast nt '+k;t.setAttribute('role',k==='err'?'alert':'status');
+  const dur=opt.ms||(k==='err'?7000:k==='busy'?15000:3800);
+  t.innerHTML=`<div class="ic">${NT.svg(NT.ic[k])}</div><div><div class="tt">${esc(opt.title||NT.title[k])}</div><div class="tm">${esc(msg)}</div>${opt.action?`<div class="act"><button class="btn sm" type="button">${esc(opt.action.label)}</button></div>`:''}</div><button class="x" type="button" aria-label="Close">${NT.svg('<path d="M18 6 6 18M6 6l12 12"/>')}</button><div class="bar" style="animation-duration:${dur}ms"></div>`;
+  box.appendChild(t);let timer;const close=()=>{clearTimeout(timer);t.classList.add('out');setTimeout(()=>t.remove(),260)};
+  const arm=ms=>{clearTimeout(timer);timer=setTimeout(close,ms)};arm(dur);
+  t.addEventListener('mouseenter',()=>clearTimeout(timer));t.addEventListener('mouseleave',()=>arm(1800));
+  $('.x',t).onclick=close;if(opt.action)$('.act button',t).onclick=()=>{close();opt.action.run()};
+  if(k==='err'||k==='ok')NC.addLocal(k,msg);return{close}};
+
+/* ---------- notification bell ---------- */
+const NC={key:()=>'fo-nc-'+(S.me?.id||'me'),items:[],seen:{msgs:0,acts:0},inited:false,filter:'all'};
+NC.load=()=>{try{const o=JSON.parse(localStorage.getItem(NC.key())||'{}');NC.items=o.items||[];NC.seen=o.seen||{msgs:0,acts:0}}catch(e){}};
+NC.save=()=>{try{localStorage.setItem(NC.key(),JSON.stringify({items:NC.items.slice(0,60),seen:NC.seen}))}catch(e){}};
+NC.unread=()=>NC.items.filter(i=>!i.read).length;
+NC.push=(it,quiet)=>{if(NC.items.some(x=>x.id===it.id))return;NC.items.unshift({read:false,at:Date.now(),...it});NC.items=NC.items.slice(0,60);NC.save();NC.badge(true);
+  if(!quiet&&document.hidden&&'Notification'in window&&Notification.permission==='granted'){try{const n=new Notification(it.title.replace(/<[^>]+>/g,''),{body:it.sub||'',icon:'/icons/icon-192.png',tag:it.id});n.onclick=()=>{focus();NC.open(it);n.close()}}catch(e){}}};
+NC.addLocal=(k,msg)=>{if(k!=='err')return;NC.push({id:'l'+Date.now()+Math.random(),type:'err',title:'Problem: '+msg.slice(0,90)},true)};
+NC.badge=(ring)=>{const b=$('#nBell');if(!b)return;const n=NC.unread();const d=$('.nb-dot',b);if(n){if(d)d.textContent=n>99?'99+':n;else b.insertAdjacentHTML('beforeend',`<span class="nb-dot">${n>99?'99+':n}</span>`)}else d&&d.remove();
+  b.setAttribute('aria-label',n?`Notifications, ${n} new`:'Notifications');if(ring){b.classList.remove('ring');void b.offsetWidth;b.classList.add('ring')}};
+NC.scan=()=>{if(!S.me||!S.me.id||!Array.isArray(S.messages))return;const me=S.me.id;
+  if(!NC.inited){NC.load();NC.inited=true;if(!NC.seen.msgs&&!NC.seen.acts){/* first run: start from now */NC.seen.msgs=Date.now();NC.seen.acts=Date.now();NC.save()}}
+  const quiet=!NC.ready;const inChat=currentRoute()==='chat'&&!document.hidden;
+  for(const m of S.messages){if(m.created>NC.seen.msgs&&m.uid!==me){if(!inChat)NC.push({id:'m'+m.id,type:'msg',uid:m.uid,title:`<b>${esc(nameOf(m.uid))}</b> in #${esc(m.channel||'general')}`,sub:(m.text||'').slice(0,120)||(m.fileId?'Shared a file':''),go:'#chat'},quiet)}}
+  NC.seen.msgs=Math.max(NC.seen.msgs,...S.messages.map(m=>m.created||0));
+  for(const a of (S.activity||[])){if(a.created>NC.seen.acts&&a.uid!==me&&a.uid!=='system'&&!/^viewed|^downloaded|^opened/.test(a.action||''))NC.push({id:'a'+a.id,type:'act',uid:a.uid,title:`<b>${esc(nameOf(a.uid))}</b> ${esc(a.action)} ${a.target?`<b>${esc(a.target)}</b>`:''}`,fileId:a.fileId},quiet)}
+  NC.seen.acts=Math.max(NC.seen.acts,...(S.activity||[]).map(a=>a.created||0));NC.save();NC.badge();NC.ready=true;
+  if($('#nPanel'))NC.renderList()};
+NC.ago=t=>{const s=(Date.now()-t)/1000;if(s<60)return'now';if(s<3600)return Math.floor(s/60)+'m';if(s<86400)return Math.floor(s/3600)+'h';return Math.floor(s/86400)+'d'};
+NC.av=it=>{if(it.type==='err')return`<span class="av ic" style="background:color-mix(in srgb,#C2410C 14%,transparent);color:#C2410C">${NT.svg(NT.ic.err)}</span>`;
+  const u=S.namesFull?.[it.uid]||{};const nm=nameOf(it.uid);return`<span class="av" style="background:${u.color||'#1C5B49'}">${u.photo?`<img src="${esc(u.photo)}" alt="">`:esc(initials(nm))}</span>`};
+NC.renderList=()=>{const l=$('#nList');if(!l)return;const f=NC.filter;const list=NC.items.filter(i=>f==='all'||(f==='msg'?i.type==='msg':f==='files'?i.type==='act':!i.read));
+  l.innerHTML=list.length?list.map(i=>`<button class="ni ${i.read?'':'unread'}" data-nid="${esc(i.id)}" type="button">${NC.av(i)}<span style="min-width:0"><span class="t">${i.title}</span>${i.sub?`<span class="s" style="display:block">${esc(i.sub)}</span>`:''}</span><span class="w">${NC.ago(i.at)}</span></button>`).join('')
+    :`<div class="ne">${NT.svg(ICONS.bell)}<div>You're all caught up</div><div style="margin-top:4px;font-size:12px">New chat messages and file changes from your team show up here.</div></div>`};
+NC.toggle=()=>{if($('#nPanel')){NC.close();return}const sc=document.createElement('div');sc.className='nscrim';sc.onclick=NC.close;
+  const p=document.createElement('div');p.className='npanel';p.id='nPanel';p.setAttribute('role','dialog');p.setAttribute('aria-label','Notifications');
+  const perm='Notification'in window?Notification.permission:'unsupported';
+  p.innerHTML=`<div class="nh"><h3>Notifications</h3><button class="btn sm ghost" id="nRead" type="button">Mark all read</button></div>
+    <div class="nf" role="tablist">${[['all','All'],['unread','Unread'],['msg','Chat'],['files','Files']].map(([k,l])=>`<button type="button" data-nf="${k}" class="${NC.filter===k?'on':''}">${l}</button>`).join('')}</div>
+    <div class="nl" id="nList"></div>
+    ${perm==='default'?`<div class="nfoot">${NT.svg(ICONS.bell)}<span style="flex:1">Get alerts even when File Org is in the background.</span><button class="btn sm primary" id="nPerm" type="button">Turn on</button></div>`:''}`;
+  document.body.append(sc,p);NC.renderList();
+  p.onclick=e=>{const it=e.target.closest('[data-nid]');if(it){const n=NC.items.find(x=>x.id===it.dataset.nid);if(n){n.read=true;NC.save();NC.badge();NC.close();NC.open(n)}return}
+    const fb=e.target.closest('[data-nf]');if(fb){NC.filter=fb.dataset.nf;$$('[data-nf]',p).forEach(b=>b.classList.toggle('on',b===fb));NC.renderList()}};
+  $('#nRead',p).onclick=()=>{NC.items.forEach(i=>i.read=true);NC.save();NC.badge();NC.renderList()};
+  $('#nPerm',p)?.addEventListener('click',async()=>{try{const r=await Notification.requestPermission();toast(r==='granted'?'Alerts are on':'Alerts were not allowed. You can change this in the browser settings.',r!=='granted');$('#nPerm',p)?.closest('.nfoot')?.remove()}catch(e){}});
+  document.addEventListener('keydown',NC.esc)};
+NC.esc=e=>{if(e.key==='Escape')NC.close()};
+NC.close=()=>{$('#nPanel')?.remove();$$('.nscrim').forEach(x=>x.remove());document.removeEventListener('keydown',NC.esc)};
+NC.open=it=>{if(it.go)location.hash=it.go;else if(it.fileId){const f=fileById(it.fileId);if(f)openFile(f);else location.hash='#activity'}};
+NC.mount=()=>{const top=$('.top');if(!top||$('#nBell'))return;const theme=top.querySelector('#themeBtn,[data-theme-toggle],.theme-btn')||[...top.querySelectorAll('button')].find(b=>/theme|dark/i.test(b.getAttribute('aria-label')||b.title||''));
+  const b=document.createElement('button');b.className='btn icon ghost nbell';b.id='nBell';b.type='button';b.innerHTML=I('bell');b.onclick=NC.toggle;
+  if(theme)theme.before(b);else top.appendChild(b);NC.badge()};
+setInterval(()=>{try{NC.mount();NC.scan()}catch(e){}},2500);
+[300,1200].forEach(ms=>setTimeout(()=>{try{NC.mount()}catch(e){}},ms));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){try{NC.scan()}catch(e){}}});
+</script>
+<script>
+/* Deltech logo for email signatures (from the company report header) */
+const DELTECH_LOGO='data:image/jpeg;base64,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';
+</script>
+<style>
+/* ================= Email signature (Profile) ================= */
+.es-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.es-grid .full{grid-column:1/-1}
+.es-prev{border:1px solid var(--line);border-radius:14px;background:#fff;padding:22px 20px;overflow:auto;position:relative}
+.es-prev::before{content:"Preview · how it looks in Gmail";position:absolute;top:8px;right:12px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#8A9792}
+.es-opts{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}
+.es-opts label{display:flex;align-items:center;gap:7px;cursor:pointer}
+.es-opts input{accent-color:var(--accent);width:16px;height:16px;margin:0}
+.es-photo{display:flex;align-items:center;gap:10px}
+.es-photo .pv{width:44px;height:44px;border-radius:50%;background:var(--accent-soft);display:grid;place-items:center;overflow:hidden;font-weight:600;color:var(--accent);flex:none}
+.es-photo .pv img{width:100%;height:100%;object-fit:cover}
+@media (max-width:640px){.es-grid{grid-template-columns:minmax(0,1fr)}}
+</style>
+<script>
+const ES={};
+ES.get=(uid=S.me?.id||'me')=>{const p=S.profiles?.[uid]||{};const e=p.emailSig||{};
+  return{on:e.on!==false&&!!(e.name||p.position||e.title),name:e.name||S.me?.name||'',title:e.title??p.position??'',company:e.company??'Deltech Parking Systems and Solutions Inc.',
+    phone:e.phone??p.phone??'',email:e.email??(S.me?.email||(typeof GD!=='undefined'&&GD.email)||''),web:e.web??'deltechsystem.com',address:e.address??'',tagline:e.tagline??'',
+    photo:e.photo??(S.me?.photo||''),showPhoto:e.showPhoto!==false,showLogo:e.showLogo!==false,saved:!!p.emailSig}};
+/* email-safe HTML: tables + inline styles only. imgMap lets the sender swap pictures for inline attachments. */
+ES.html=(s,imgMap={})=>{const A='#1C5B49',INK='#16201C',MUT='#6B7A74',e=x=>esc(x||'');const ini=initials(s.name||'?');
+  const photo=s.showPhoto?(s.photo?`<img src="${e(imgMap.photo||s.photo)}" width="76" height="76" alt="${e(s.name)}" style="display:block;width:76px;height:76px;border-radius:50%;object-fit:cover;border:0">`
+    :`<table cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td width="76" height="76" align="center" valign="middle" style="width:76px;height:76px;border-radius:50%;background:${A};color:#ffffff;font:600 24px Arial,Helvetica,sans-serif;letter-spacing:1px">${e(ini)}</td></tr></table>`):'';
+  const row=(lab,val,href)=>val?`<tr><td style="padding:2px 10px 2px 0;font:700 9.5px Arial,Helvetica,sans-serif;letter-spacing:1.2px;color:${A};text-transform:uppercase;vertical-align:top;white-space:nowrap">${lab}</td><td style="padding:2px 0;font:12.5px Arial,Helvetica,sans-serif;color:${INK};vertical-align:top">${href?`<a href="${e(href)}" style="color:${INK};text-decoration:none">${e(val)}</a>`:e(val)}</td></tr>`:'';
+  const web=s.web?(/^https?:/i.test(s.web)?s.web:'https://'+s.web.replace(/^\/+/,'')):'';
+  return`<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;color:${INK};max-width:520px">
+<tr>${photo?`<td valign="top" style="padding:0 18px 0 0;vertical-align:top">${photo}</td>`:''}
+<td valign="top" style="vertical-align:top;border-left:2px solid ${A};padding:0 0 0 18px">
+<div style="font:700 17px Arial,Helvetica,sans-serif;color:${INK};letter-spacing:.2px;line-height:1.25">${e(s.name)}</div>
+${s.title?`<div style="font:700 10.5px Arial,Helvetica,sans-serif;color:${A};letter-spacing:1.6px;text-transform:uppercase;margin-top:4px">${e(s.title)}</div>`:''}
+${s.company?`<div style="font:12.5px Arial,Helvetica,sans-serif;color:${MUT};margin-top:3px">${e(s.company)}</div>`:''}
+<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-top:10px;border-collapse:collapse">${row('Mobile',s.phone,s.phone?'tel:'+s.phone.replace(/[^\d+]/g,''):'')}${row('Email',s.email,s.email?'mailto:'+s.email:'')}${row('Web',s.web,web)}${row('Office',s.address,'')}</table>
+${s.showLogo||s.tagline?`<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-top:12px;border-collapse:collapse"><tr>${s.showLogo?`<td style="padding:0 12px 0 0;vertical-align:middle"><img src="${e(imgMap.logo||DELTECH_LOGO)}" height="34" alt="Deltech" style="display:block;height:34px;width:auto;border:0"></td>`:''}${s.tagline?`<td style="vertical-align:middle;font:italic 11.5px Georgia,'Times New Roman',serif;color:${MUT};${s.showLogo?`border-left:1px solid #D9E1DD;padding-left:12px`:''}">${e(s.tagline)}</td>`:''}</tr></table>`:''}
+</td></tr></table>`};
+ES.text=s=>[`--`,s.name,[s.title,s.company].filter(Boolean).join(' · '),s.phone&&('Mobile: '+s.phone),s.email&&('Email: '+s.email),s.web&&('Web: '+s.web),s.address&&('Office: '+s.address),s.tagline].filter(Boolean).join('\n');
+ES.small=async(file,max=192)=>{const url=await new Promise((r,j)=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.onerror=j;fr.readAsDataURL(file)});const im=await loadImg(url);
+  const c=document.createElement('canvas');const sz=Math.min(max,Math.min(im.naturalWidth,im.naturalHeight));c.width=c.height=sz;const x=c.getContext('2d');const s=Math.min(im.naturalWidth,im.naturalHeight);
+  x.drawImage(im,(im.naturalWidth-s)/2,(im.naturalHeight-s)/2,s,s,0,0,sz,sz);return c.toDataURL('image/jpeg',.86)};
+ES.card=()=>{const s=ES.get();const f=(id,label,val,ph,type='text',cls='')=>`<div class="field ${cls}"><label for="${id}">${label}</label><input class="input" id="${id}" type="${type}" value="${esc(val||'')}" placeholder="${esc(ph||'')}" autocomplete="off"></div>`;
+  return`<div class="card" id="esCard"><div class="card-h"><h3>Email signature</h3><span class="muted" style="font-size:12px">Added to emails you send with Send by Gmail</span></div><div class="card-b" style="display:flex;flex-direction:column;gap:14px">
+  <div class="es-prev" id="esPrev"></div>
+  <div class="es-grid">${f('esName','Full name',s.name,'Juan Dela Cruz')}${f('esTitle','Position',s.title,'IT Support')}${f('esCompany','Company',s.company,'Deltech Parking Systems and Solutions Inc.','text','full')}
+  ${f('esPhone','Mobile',s.phone,'0917 123 4567','tel')}${f('esEmail','Email',s.email,'name@gmail.com','email')}${f('esWeb','Website',s.web,'deltechsystem.com')}${f('esAddr','Office address',s.address,'10 W Geonzon St, Lahug, Cebu City')}
+  ${f('esTag','Tagline (optional)',s.tagline,'Keeping systems running.','text','full')}</div>
+  <div class="es-photo"><span class="pv" id="esPv">${s.photo?`<img src="${esc(s.photo)}" alt="">`:esc(initials(s.name))}</span><div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn sm" for="esFile" style="cursor:pointer">${I('upload')}Upload photo</label><input type="file" id="esFile" accept="image/*" hidden>${s.photo?`<button class="btn sm ghost" type="button" id="esNoPhoto">Remove photo</button>`:''}</div></div>
+  <div class="es-opts"><label><input type="checkbox" id="esShowPhoto" ${s.showPhoto?'checked':''}> Show photo</label><label><input type="checkbox" id="esShowLogo" ${s.showLogo?'checked':''}> Show Deltech logo</label><label><input type="checkbox" id="esOn" ${s.on||!s.saved?'checked':''}> Add to my emails</label></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn primary" type="button" id="esSave">${I('save')}Save signature</button></div></div></div>`};
+ES.read=v=>({name:$('#esName',v).value.trim(),title:$('#esTitle',v).value.trim(),company:$('#esCompany',v).value.trim(),phone:$('#esPhone',v).value.trim(),email:$('#esEmail',v).value.trim(),web:$('#esWeb',v).value.trim(),
+  address:$('#esAddr',v).value.trim(),tagline:$('#esTag',v).value.trim(),photo:ES._photo??ES.get().photo,showPhoto:$('#esShowPhoto',v).checked,showLogo:$('#esShowLogo',v).checked,on:$('#esOn',v).checked});
+ES.bind=v=>{const card=$('#esCard',v);if(!card)return;ES._photo=undefined;const prev=()=>{$('#esPrev',v).innerHTML=ES.html(ES.read(v))};prev();
+  card.addEventListener('input',prev);card.addEventListener('change',prev);
+  $('#esFile',v).onchange=async e=>{const file=e.target.files[0];if(!file)return;try{ES._photo=await ES.small(file);$('#esPv',v).innerHTML=`<img src="${ES._photo}" alt="">`;$('#esShowPhoto',v).checked=true;prev()}catch(err){toast('Could not read that picture.',true)}};
+  $('#esNoPhoto',v)?.addEventListener('click',()=>{ES._photo='';$('#esPv',v).textContent=initials($('#esName',v).value);prev()});
+  $('#esSave',v).onclick=async()=>{const sig=ES.read(v);if(sig.email&&!GM.valid(sig.email)){toast('Check the email address.',true);return}const id=S.me.id||'me';
+    try{await DB.set('profiles/'+id,{...(S.profiles[id]||{}),emailSig:sig,updated:Date.now()});S.profiles[id]={...(S.profiles[id]||{}),emailSig:sig};toast('Signature saved')}catch(e){toast(dbErr(e),true)}}};
+(()=>{const oh=VIEWS.profile.html,ob=VIEWS.profile.bind;
+  VIEWS.profile.html=function(){const h=oh.apply(this,arguments);const at=h.indexOf('<div class="card"><div class="card-h"><h3>My signature</h3>');return at>=0?h.slice(0,at)+ES.card()+h.slice(at):h+ES.card()};
+  VIEWS.profile.bind=function(v){ob&&ob.apply(this,arguments);try{ES.bind(v)}catch(e){console.warn(e)}}})();
 </script>
 <script>
 /* ================= PDF editor ================= */
