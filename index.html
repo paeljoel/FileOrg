@@ -3049,6 +3049,7 @@ function dxApplyPage(pg){const p=$('#paper');if(!p)return;if(!pg){p.style.width=
 @media (max-width:860px){.ed-body>.paper{margin-top:8px;margin-bottom:8px}}
 .paper img.img-sel{outline:2px solid var(--accent,#1C5B49)!important;outline-offset:2px}
 .paper img.fo-float{cursor:move;touch-action:none}
+.paper img.img-sel:not(.fo-float){cursor:grab;touch-action:none}
 .paper img.fo-float.dragging{opacity:.85;outline-style:dashed!important}
 .img-bar .sep{width:1px;height:20px;background:var(--line)}
 .img-bar .btn.sm{height:28px}
@@ -3149,10 +3150,36 @@ WP.refreshPic=img=>{if(window._lastImg===img&&$('#imgBar')){const keep=img;showI
 
 /* drag pictures that are placed Behind or In Front of text; arrow keys nudge */
 document.addEventListener('pointerdown',e=>{const img=e.target.closest&&e.target.closest('#paper img.fo-float');if(!img||e.button>0)return;e.preventDefault();
-  const z=W.zoom||1;const sx=e.clientX,sy=e.clientY,l0=parseFloat(img.style.left)||0,t0=parseFloat(img.style.top)||0;let moved=false;img.setPointerCapture?.(e.pointerId);
+  const sx=e.clientX,sy=e.clientY,l0=parseFloat(img.style.left)||0,t0=parseFloat(img.style.top)||0;let moved=false;img.setPointerCapture?.(e.pointerId);
+  /* real on-screen scale (phone fit / zoom), measured so the picture follows the finger exactly */
+  const z=(()=>{const a=img.getBoundingClientRect().left;img.style.left=(l0+100)+'px';const b=img.getBoundingClientRect().left;img.style.left=l0+'px';const r=(b-a)/100;return r>0.05?r:(W.zoom||1)})();
   const mv=ev=>{const dx=(ev.clientX-sx)/z,dy=(ev.clientY-sy)/z;if(!moved&&Math.abs(dx)+Math.abs(dy)<3)return;moved=true;img.classList.add('dragging');img.style.left=Math.round(l0+dx)+'px';img.style.top=Math.round(t0+dy)+'px';$('#imgBar')?._place?.()};
   const up=()=>{img.removeEventListener('pointermove',mv);img.removeEventListener('pointerup',up);img.removeEventListener('pointercancel',up);img.classList.remove('dragging');if(moved)WP.mark();showImgBar(img)};
   img.addEventListener('pointermove',mv);img.addEventListener('pointerup',up);img.addEventListener('pointercancel',up)},true);
+/* pictures in the text flow (In line, Square, Top and bottom) can be dragged too:
+   drop them where the text cursor shows; Square pictures go left or right by where you drop */
+document.addEventListener('dragstart',e=>{if(e.target.closest&&e.target.closest('#paper img'))e.preventDefault()},true);
+WP.caretAt=(x,y)=>{let r=null;if(document.caretRangeFromPoint)r=document.caretRangeFromPoint(x,y);else if(document.caretPositionFromPoint){const c=document.caretPositionFromPoint(x,y);if(c){r=document.createRange();r.setStart(c.offsetNode,c.offset);r.collapse(true)}}return r};
+document.addEventListener('pointerdown',e=>{const img=e.target.closest&&e.target.closest('#paper img:not(.fo-float)');if(!img||e.button>0)return;
+  if(e.pointerType!=='mouse'&&!img.classList.contains('img-sel'))return;/* on touch: tap once to select, then drag */
+  const paper=WP.paper();const sx=e.clientX,sy=e.clientY;let on=false,ghost=null,mark=null,range=null,hid=[];const mode=WP.wrapOf(img);
+  if(e.pointerType!=='mouse')e.preventDefault();
+  const start=()=>{on=true;const r=img.getBoundingClientRect();ghost=img.cloneNode();ghost.removeAttribute('id');ghost.className='';
+    ghost.style.cssText=`position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;opacity:.75;pointer-events:none;z-index:200;box-shadow:0 10px 30px rgba(0,0,0,.22);border-radius:4px;transition:none;outline:2px solid var(--accent);outline-offset:2px`;
+    ghost._dx=sx-r.left;ghost._dy=sy-r.top;document.body.appendChild(ghost);mark=document.createElement('div');mark.style.cssText='position:fixed;width:2px;background:var(--accent);z-index:199;pointer-events:none;border-radius:2px;box-shadow:0 0 0 2px rgba(28,91,73,.18)';document.body.appendChild(mark);
+    img.style.opacity='.3';img.style.pointerEvents='none';document.body.style.userSelect='none';
+    /* toolbars and floating buttons over the page must not block the drop spot */
+    hid=[...document.body.querySelectorAll('#imgBar,.toast,.fab,.bnav,body > div, body > button')].filter(x=>x!==ghost&&x!==mark&&!x.contains(paper)&&getComputedStyle(x).position==='fixed'&&getComputedStyle(x).visibility!=='hidden');hid.forEach(x=>x.style.visibility='hidden')};
+  const mv=ev=>{if(!on){if(Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)<5)return;start()}ev.preventDefault();
+    ghost.style.left=(ev.clientX-ghost._dx)+'px';ghost.style.top=(ev.clientY-ghost._dy)+'px';
+    let r=WP.caretAt(ev.clientX,ev.clientY);if(r&&(!paper.contains(r.startContainer)||img.contains(r.startContainer)))r=null;
+    if(r){let n=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement;const ce=n&&n.closest('[contenteditable="false"]');if(ce&&paper.contains(ce)){r=document.createRange();r.setStartBefore(ce);r.collapse(true)}}
+    range=r;if(r){const rc=r.getClientRects()[0]||r.startContainer.nodeType===1&&r.startContainer.getBoundingClientRect?.();if(rc){mark.style.display='block';mark.style.left=rc.left+'px';mark.style.top=rc.top+'px';mark.style.height=Math.max(14,rc.height||18)+'px'}}else mark.style.display='none'};
+  const up=ev=>{document.removeEventListener('pointermove',mv,true);document.removeEventListener('pointerup',up,true);document.removeEventListener('pointercancel',up,true);
+    if(!on)return;hid.forEach(x=>x.style.visibility='');ghost.remove();mark.remove();img.style.opacity='';img.style.pointerEvents='';document.body.style.userSelect='';
+    if(ev.type==='pointerup'&&range){range.insertNode(img);if(mode==='square'){const pr=paper.getBoundingClientRect();const right=ev.clientX>pr.left+pr.width/2;img.style.float=right?'right':'left';img.style.margin=right?'4px 0 6px 12px':'4px 12px 6px 0'}WP.mark()}
+    showImgBar(img)};
+  document.addEventListener('pointermove',mv,true);document.addEventListener('pointerup',up,true);document.addEventListener('pointercancel',up,true)},true);
 document.addEventListener('keydown',e=>{const img=window._lastImg;if(!img||!$('#imgBar')||!img.isConnected)return;if(e.target.closest&&e.target.closest('input,textarea,select'))return;
   if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();img.remove();hideImgBar();WP.mark();return}
   if(!img.classList.contains('fo-float'))return;const d=e.shiftKey?10:1;const k={ArrowLeft:[-d,0],ArrowRight:[d,0],ArrowUp:[0,-d],ArrowDown:[0,d]}[e.key];if(!k)return;e.preventDefault();
