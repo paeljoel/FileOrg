@@ -1836,7 +1836,7 @@ GD.poll=async()=>{if(GD._busy)return;GD._busy=true;try{
     GD.next+=rows.length;for(const r of rows){const ch=await GD.applyRow(r);if(ch)GD.emit('change',ch)}
     if(GD.down){GD.down=false;GD.emit('open')}
   }catch(e){if(!GD.down&&(e instanceof TypeError||!navigator.onLine)){GD.down=true;GD.emit('error')}}finally{GD._busy=false}};
-GD.startPolling=()=>{clearTimeout(GD.polling);const tick=async()=>{await GD.poll();GD.polling=setTimeout(tick,document.hidden?15000:4000)};GD.polling=setTimeout(tick,4000);
+GD.startPolling=()=>{clearTimeout(GD.polling);const tick=async()=>{await GD.poll();GD.polling=setTimeout(tick,document.hidden?30000:6000)};GD.polling=setTimeout(tick,6000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){clearTimeout(GD.polling);tick()}})};
 
 /* ---------- live updates: a stand-in for the office PC's event stream ---------- */
