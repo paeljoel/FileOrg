@@ -313,8 +313,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
 .ed-body{flex:1;overflow:auto;background:var(--sunk);min-height:0}
 .ed-status{display:flex;gap:16px;align-items:center;padding:6px 16px;border-top:1px solid var(--line);background:var(--panel);font-size:11.5px;color:var(--ink-3)}
 /* word */
-.paper{background:#fff;color:#1b1b1b;width:min(816px,calc(100% - 32px));min-height:1056px;margin:28px auto;padding:96px;box-shadow:0 1px 3px rgba(0,0,0,.12),0 12px 32px -12px rgba(0,0,0,.25);outline:none;font-family:Calibri,"Carlito","Geist",sans-serif;font-size:11pt;line-height:1.5;color-scheme:light}
-.paper.landscape{width:min(1056px,calc(100% - 32px));min-height:816px}
+.paper{background:#fff;color:#1b1b1b;width:816px;flex:none;min-height:1056px;margin:28px auto;padding:96px;box-shadow:0 1px 3px rgba(0,0,0,.12),0 12px 32px -12px rgba(0,0,0,.25);outline:none;font-family:Calibri,"Carlito","Geist",sans-serif;font-size:11pt;line-height:1.5;color-scheme:light}
+.paper.landscape{width:1056px;min-height:816px}
 .paper.narrow{padding:48px}.paper.wide{padding:144px}
 .paper h1{font-family:inherit;font-size:20pt;font-weight:700;margin:0 0 10px}
 .paper h2{font-family:inherit;font-size:15pt;font-weight:700;margin:16px 0 6px;color:#1F3864}
@@ -495,7 +495,6 @@ table.sheet{border-collapse:separate;border-spacing:0;font-size:13px;table-layou
   .menu-btn{display:inline-flex}
   .org{grid-template-columns:minmax(0,1fr)}
   .pdf-layout{grid-template-columns:minmax(0,1fr)}.thumbs{display:none}
-  .paper{padding:40px 28px;min-height:auto}
   .top .search kbd,.presence{display:none}
   .two-col{grid-template-columns:minmax(0,1fr)!important}
 }
@@ -1430,7 +1429,7 @@ EDITORS.word={
     $('#wDate',v).onclick=()=>{ex('insertText',new Date().toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}));mark()};
     $('#wOrient',v).onchange=e=>{paper.classList.toggle('landscape',e.target.value==='landscape')};
     $('#wMargin',v).onchange=e=>{paper.classList.remove('narrow','wide');if(e.target.value)paper.classList.add(e.target.value)};
-    const zoom=d=>{W.zoom=Math.min(2,Math.max(.5,+(W.zoom+d).toFixed(2)));paper.style.zoom=W.zoom;$('#wZv').textContent=Math.round(W.zoom*100)+'%'};zoom(0);
+    const zoom=d=>{W.zoom=Math.min(2,Math.max(.25,+(W.zoom+d).toFixed(2)));W.userZoom=true;paper.style.zoom=W.zoom;$('#wZv').textContent=Math.round(W.zoom*100)+'%'};zoom(0);W.userZoom=false;
     $('#wZi',v).onclick=()=>zoom(.1);$('#wZo',v).onclick=()=>zoom(-.1);
     // find & replace
     const fb=$('#wFindBar',v);$('#wFind',v).onclick=()=>{fb.hidden=!fb.hidden;if(!fb.hidden)$('#wFq').focus()};$('#wFx',v).onclick=()=>fb.hidden=true;
@@ -2841,8 +2840,8 @@ function dxFixOverlaps(paper){if(!paper)return;for(const im of paper.querySelect
   const bottom=im.getBoundingClientRect().bottom;for(let n=host.nextElementSibling;n;n=n.nextElementSibling){const r=n.getBoundingClientRect();if(r.top>=bottom)break;
     if(n.textContent.replace(/\s/g,'')||n.tagName==='TABLE'||n.tagName==='HR'||n.querySelector('table')){n.style.marginTop=Math.round(parseFloat(getComputedStyle(n).marginTop)+bottom-r.top+8)+'px';break}}}}
 /* apply the Word page size and margins to the editor sheet */
-function dxApplyPage(pg){const p=$('#paper');if(!p)return;if(!pg){p.style.width=p.style.padding=p.style.minHeight='';return}
-  p.style.width=`min(${pg.w}px,calc(100% - 32px))`;p.style.minHeight=pg.h+'px';p.style.padding=`${pg.mt}px ${pg.mr}px ${pg.mb}px ${pg.ml}px`}
+function dxApplyPage(pg){const p=$('#paper');if(!p)return;if(!pg){p.style.width=p.style.padding=p.style.minHeight='';setTimeout(()=>WP.fit&&WP.fit(),0);return}
+  p.style.width=pg.w+'px';p.style.minHeight=pg.h+'px';p.style.padding=`${pg.mt}px ${pg.mr}px ${pg.mb}px ${pg.ml}px`;setTimeout(()=>WP.fit&&WP.fit(),0)}
 
 (()=>{const prev=importToHtml;importToHtml=async(buf,name)=>{
   if(extOf(name||'')==='docx'){try{const h=await docxToHtml(buf);dxApplyPage(DX.page);setTimeout(()=>dxFixOverlaps($('#paper')),60);return h}catch(e){console.warn('docx converter fell back to simple import:',e)}}
@@ -2924,7 +2923,6 @@ function dxApplyPage(pg){const p=$('#paper');if(!p)return;if(!pg){p.style.width=
   @keyframes sheetUp{from{transform:translateY(100%)}}
   /* comfortable tap targets, no iOS zoom on focus */
   .input,.field input,.field select,.field textarea,#gsearch,textarea{font-size:16px!important}
-  .paper{min-height:62vh!important;padding:28px 20px!important}
   .btn{min-height:40px}
   .page-head{flex-wrap:wrap;gap:10px}
   .page-head>*{min-width:0}
@@ -2948,6 +2946,12 @@ function dxApplyPage(pg){const p=$('#paper');if(!p)return;if(!pg){p.style.width=
   .grid.two-col:has(> #chatPane) .channels::-webkit-scrollbar{display:none}
   .grid.two-col:has(> #chatPane) .channels button{flex:0 0 auto;width:auto!important;border-radius:99px!important;padding:6px 12px!important;height:34px}
   #chatPane{min-height:0;height:100%}
+  /* editors: file actions in one swipeable row, Save first, so the page gets the room */
+  .ed-bar{flex-wrap:wrap;row-gap:8px;padding-block:8px}
+  .ed-bar .toolbar{flex:1 1 100%;flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;gap:6px;-webkit-mask-image:linear-gradient(90deg,#000 90%,transparent)}
+  .ed-bar .toolbar::-webkit-scrollbar{display:none}
+  .ed-bar .toolbar .btn{flex:none;min-height:36px}
+  .ed-bar .toolbar .btn.primary{order:-1}
   /* dashboard shortcuts: two per row, compact */
   .quick{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
   .quick>*{padding:14px!important}
@@ -3019,6 +3023,9 @@ function dxApplyPage(pg){const p=$('#paper');if(!p)return;if(!pg){p.style.width=
 .wmenu .wi{width:22px;height:16px;display:inline-grid;place-items:center;flex:none}
 .wmenu .wi i{display:block;width:18px;height:12px;border:1.5px solid currentColor;border-radius:2px;position:relative}
 .paper{isolation:isolate}
+.ed-body{overflow:auto}
+.ed-body>.paper{margin-left:auto;margin-right:auto}
+@media (max-width:860px){.ed-body>.paper{margin-top:8px;margin-bottom:8px}}
 .paper img.img-sel{outline:2px solid var(--accent,#1C5B49)!important;outline-offset:2px}
 .paper img.fo-float{cursor:move;touch-action:none}
 .paper img.fo-float.dragging{opacity:.85;outline-style:dashed!important}
@@ -3215,7 +3222,14 @@ WP.enhance=v=>{const rib=$('#wRib',v);if(!rib||$('#wTabs',v))return;
     const k=b.dataset.pf;({wrap:()=>WP.menu(b,WP.wrapItems(img)),front:()=>WP.order(img,+1),back:()=>WP.order(img,-1),al:()=>WP.align(img,'left'),ac:()=>WP.align(img,'center'),ar:()=>WP.align(img,'right'),
       rot:()=>WP.transform(img,'rot'),fx:()=>WP.transform(img,'fx'),size:()=>WP.size(img),bg:()=>WP.removeBg(img),border:()=>WP.border(img),alt:()=>WP.alt(img),reset:()=>WP.reset(img),del:()=>{img.remove();hideImgBar();WP.mark()}})[k]?.()});
   WP.tagFloats();new MutationObserver(()=>WP.tagFloats()).observe(WP.paper(),{childList:true,subtree:true})};
-(()=>{const ed=EDITORS.word;const ob=ed.bind;ed.bind=function(v){const r=ob.apply(this,arguments);try{WP.enhance(v)}catch(e){console.warn('ribbon tabs',e)}return r}})();
+/* ---------- the page keeps its real size (like Word); on small screens it is scaled to fit, never squeezed ---------- */
+WP.pageW=()=>{const p=WP.paper();if(!p)return 816;const w=parseFloat(p.style.width)||(p.classList.contains('landscape')?1056:816);return w};
+WP.fit=(force)=>{const p=WP.paper(),body=$('#wBody');if(!p||!body||!body.clientWidth)return;if(W.userZoom&&!force)return;
+  const avail=body.clientWidth-(innerWidth<=860?16:48);const z=Math.min(1,Math.max(.25,+(avail/WP.pageW()).toFixed(3)));
+  W.zoom=z;p.style.zoom=z;const zv=$('#wZv');if(zv)zv.textContent=Math.round(z*100)+'%'};
+addEventListener('resize',()=>{clearTimeout(WP._ft);WP._ft=setTimeout(()=>WP.fit(),120)});
+addEventListener('orientationchange',()=>setTimeout(()=>WP.fit(true),300));
+(()=>{const ed=EDITORS.word;const ob=ed.bind;ed.bind=function(v){const r=ob.apply(this,arguments);try{WP.enhance(v)}catch(e){console.warn('ribbon tabs',e)}setTimeout(()=>WP.fit(),0);setTimeout(()=>WP.fit(),400);return r}})();
 </script>
 <script>
 /* ================= PDF editor ================= */
