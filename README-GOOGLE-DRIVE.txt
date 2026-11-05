@@ -63,6 +63,12 @@ STEP 3  First sign-in and sharing
  4. Coworkers open the same link and sign in with that email. On iPhone: Safari > Share >
     Add to Home Screen, so it opens like an app.
 
+SEND BY GMAIL (optional, free)
+  * In Google Cloud (project FileOrg): APIs & Services > Library > Gmail API > Enable.
+  * Google Auth Platform > Data access > Add or remove scopes > tick .../auth/gmail.send > Update > Save.
+  * Then any file's menu (or the Gmail button in the editors) > Send by Gmail. The first time,
+    Google asks each person to allow File Org to send email from their own Gmail.
+
 ONE GOOGLE DRIVE
   * Everything is stored in the Drive of the account that created the File Org folder (the admin).
   * On free Gmail, a file a coworker uploads would normally count against the coworker's own storage.

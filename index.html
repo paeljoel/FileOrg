@@ -541,7 +541,7 @@ function fmtBytes(n){n=+n||0;if(n<1024)return n+' B';if(n<1048576)return (n/1024
 function ago(t){const s=(Date.now()-t)/1000;if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';if(s<604800)return Math.floor(s/86400)+'d ago';return new Date(t).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}
 function fullDate(t){return new Date(t).toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}
 function isoToday(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function loadScript(src){return new Promise((res,rej)=>{if(document.querySelector(`script[src="${src}"]`)){const s=document.querySelector(`script[src="${src}"]`);if(s.dataset.ok)return res();s.addEventListener('load',()=>res());s.addEventListener('error',rej);return}const s=document.createElement('script');s.src=src;s.onload=()=>{s.dataset.ok=1;res()};s.onerror=()=>rej(new Error('Could not load '+src));document.head.appendChild(s)})}
+function loadScript(src){return new Promise((res,rej)=>{if(document.querySelector(`script[src="${src}"]`)){const s=document.querySelector(`script[src="${src}"]`);if(s.dataset.ok)return res();s.addEventListener('load',()=>res());s.addEventListener('error',()=>rej(new Error('Could not load '+src)));return}const s=document.createElement('script');s.src=src;s.onload=()=>{s.dataset.ok=1;res()};s.onerror=()=>{s.remove();/* so a later try can load it again instead of waiting forever */rej(new Error('Could not load '+src))};document.head.appendChild(s)})}
 const LIB={
   pdfjs:'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
   pdfworker:'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
@@ -2046,6 +2046,7 @@ if(GD.cfg&&GD.cfg.clientId){GD.on=true;window.FILEORG_LOCAL=true;
   const libs={...LIB};
   LocalAPI.key=()=> '';
   LocalAPI.login=async()=>{Object.assign(LIB,libs);/* this static site loads editor parts from the CDN, not /lib */
+    GD.loadGsi().catch(()=>{});/* ready ahead of time, so later Google windows open straight from a tap */
     if(!GD.loadTok())await GD.signIn();
     const me=await GD.json('https://www.googleapis.com/oauth2/v3/userinfo');GD.email=me.email||'';store.set('gEmail',GD.email);
     let root=await GD.findRoot();if(!root)root=await GD.setupRoot(GD.email);
@@ -3230,6 +3231,117 @@ WP.fit=(force)=>{const p=WP.paper(),body=$('#wBody');if(!p||!body||!body.clientW
 addEventListener('resize',()=>{clearTimeout(WP._ft);WP._ft=setTimeout(()=>WP.fit(),120)});
 addEventListener('orientationchange',()=>setTimeout(()=>WP.fit(true),300));
 (()=>{const ed=EDITORS.word;const ob=ed.bind;ed.bind=function(v){const r=ob.apply(this,arguments);try{WP.enhance(v)}catch(e){console.warn('ribbon tabs',e)}setTimeout(()=>WP.fit(),0);setTimeout(()=>WP.fit(),400);return r}})();
+</script>
+<style>
+/* ================= Send by Gmail ================= */
+.gm-file{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
+.gm-file .nm{font-family:var(--mono,ui-monospace,monospace);font-size:12.5px;word-break:break-all;line-height:1.35}
+.gm-file .sz{font-size:12px;color:var(--ink-3);margin-top:2px}
+.gm-file .st{margin-left:auto;font-size:12px;color:var(--ink-3);white-space:nowrap}
+.gm-file .st.ok{color:var(--good,#2B7A4B)}
+.gm-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.gm-modal textarea.input{min-height:150px;resize:vertical;line-height:1.5;font-family:inherit}
+.gm-how{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink-3);line-height:1.45}
+.gm-how svg{width:16px;height:16px;flex:none;margin-top:1px}
+.gm-chips{display:flex;flex-wrap:wrap;gap:6px}
+.gm-chips button{border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:4px 10px;font-size:12px;color:var(--ink-2);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-chips button:hover{border-color:var(--accent);color:var(--accent)}
+.gm-seg{display:flex;gap:6px;flex-wrap:wrap}
+.gm-seg label{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:13px;cursor:pointer;flex:1 1 180px;min-width:0}
+.gm-seg label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.gm-seg input{accent-color:var(--accent);margin:0}
+.gm-err{color:var(--bad);font-size:13px;min-height:0}
+.gm-err:empty{display:none}
+</style>
+<script>
+ICONS.mail='<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/>';
+const GM={recent:()=>{try{return JSON.parse(localStorage.getItem('fo-gm-recent')||'[]')}catch(e){return[]}},
+  remember:list=>{try{const r=[...new Set([...list,...GM.recent()].map(x=>x.toLowerCase()))].slice(0,8);localStorage.setItem('fo-gm-recent',JSON.stringify(r))}catch(e){}},
+  emails:s=>String(s||'').split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean),
+  valid:e=>/^[^\s@<>()",;]+@[^\s@<>()",;]+\.[a-z]{2,}$/i.test(e),
+  direct:()=>typeof GD!=='undefined'&&GD.on&&S.localInfo?.storage==='gdrive'};
+GM.size=n=>n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
+/* the real file bytes, whatever mode File Org runs in */
+GM.blob=f=>Promise.race([GM.blob0(f),new Promise((_,j)=>setTimeout(()=>j(new Error('Reading the file took too long. Check the connection and try again.')),60000))]);
+GM.blob0=async f=>{let b;
+  if(GM.direct())b=await GD.download(f.id);
+  else if(S.mode==='local'){const r=await fetch(LocalAPI.blobUrl(f));if(!r.ok)throw new Error('Could not read the file ('+r.status+').');b=await r.blob()}
+  else if(f._blob&&f.store!=='env')b=f._blob;
+  else if(f.url&&f.store!=='env'){const r=await fetch(f.url);if(!r.ok)throw new Error('Could not read the file ('+r.status+').');b=await r.blob()}
+  else{const d=await fetchFile(f);if(d instanceof ArrayBuffer)b=new Blob([d]);else if(f.kind==='doc'&&d&&d.html)b=(await docExport(d.html,'x')).blob;else if(f.kind==='sheet'&&d&&(d.sheets||Array.isArray(d)))b=await xlsxBlob(d.sheets||d);else if(d&&d.b64)b=new Blob([b642ab(d.b64)]);else throw new Error('This file cannot be attached yet. Download it and attach it by hand.')}
+  return new File([b],f.name,{type:b.type||(typeof gdMime==='function'?gdMime(f.name):'application/octet-stream')})};
+const b64=async blob=>{const buf=new Uint8Array(await blob.arrayBuffer());let s='';for(let i=0;i<buf.length;i+=0x8000)s+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));return btoa(s)};
+const b64s=str=>btoa(unescape(encodeURIComponent(str)));
+GM.mime=async({to,cc,subject,body,file})=>{const bd='fo_'+Math.random().toString(36).slice(2);const enc=s=>/^[\x20-\x7e]*$/.test(s)?s:`=?UTF-8?B?${b64s(s)}?=`;
+  const wrap=s=>s.replace(/.{1,76}/g,'$&\r\n');const lines=[`To: ${to.join(', ')}`,...(cc.length?[`Cc: ${cc.join(', ')}`]:[]),`Subject: ${enc(subject)}`,'MIME-Version: 1.0',`Content-Type: multipart/mixed; boundary="${bd}"`,'',
+    `--${bd}`,'Content-Type: text/plain; charset="UTF-8"','Content-Transfer-Encoding: base64','',wrap(b64s(body))];
+  if(file){const fn=file.name.replace(/"/g,'');lines.push(`--${bd}`,`Content-Type: ${file.type||'application/octet-stream'}; name="${enc(fn)}"`,`Content-Disposition: attachment; filename="${enc(fn)}"`,'Content-Transfer-Encoding: base64','',wrap(await b64(file)))}
+  lines.push(`--${bd}--`,'');return lines.join('\r\n')};
+/* Gmail permission (asked once, the first time someone sends) */
+GM.scope='https://www.googleapis.com/auth/gmail.send';
+GM.askGmail=()=>new Promise(async(res,rej)=>{if(!window.google?.accounts?.oauth2){try{await GD.loadGsi()}catch(e){return rej(e)}}const tc=google.accounts.oauth2.initTokenClient({client_id:GD.cfg.clientId,scope:GM.scope,include_granted_scopes:true,hint:GD.email||undefined,
+    callback:r=>{if(r.error)return rej(new Error(r.error_description||r.error));if(!google.accounts.oauth2.hasGrantedAllScopes(r,GM.scope))return rej(new Error('File Org needs permission to send email. Tap Send again and tick “Send email on your behalf”.'));
+      GD.token=r.access_token;GD.exp=Date.now()+(+r.expires_in||3600)*1000;GD.saveTok();try{sessionStorage.setItem('fo-gm-ok','1')}catch(e){}res()},
+    error_callback:e=>rej(new Error(e&&e.type==='popup_failed_to_open'?'Allow pop-ups for this site, then tap Send again.':'Gmail permission was not given.'))});
+  tc.requestAccessToken({prompt:''})});
+GM.hasGmail=()=>{try{return sessionStorage.getItem('fo-gm-ok')==='1'&&GD.exp>Date.now()+60000}catch(e){return false}};
+GM.sendGmail=async(msg)=>{const raw=await GM.mime(msg);if(raw.length>34*1024*1024)throw new Error('This file is too big for Gmail (25 MB limit). Send it as a Google Drive link instead.');
+  const r=await GD.rf('https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media',{method:'POST',headers:{Authorization:'Bearer '+GD.token,'content-type':'message/rfc822'},body:raw});
+  if(r.status===401||r.status===403){const j=await r.json().catch(()=>({}));const m=j.error?.message||'';
+    if(/has not been used|is disabled|accessNotConfigured/i.test(m))throw new Error('The Gmail API is not turned on yet. In Google Cloud (project FileOrg), open APIs & Services → Library → Gmail API → Enable, then try again.');
+    try{sessionStorage.removeItem('fo-gm-ok')}catch(e){}throw new Error('Gmail permission expired. Tap Send again.')}
+  if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error?.message||'Gmail could not send this ('+r.status+').')}
+  return r.json()};
+GM.driveLink=async(f,to)=>{for(const em of to){try{await GD.json(`${GAPI.drive}/files/${f.id}/permissions?sendNotificationEmail=false&supportsAllDrives=true&fields=id`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'user',role:'reader',emailAddress:em})})}catch(e){}}
+  const m=await GD.json(`${GAPI.drive}/files/${f.id}?fields=webViewLink&supportsAllDrives=true`);return m.webViewLink||('https://drive.google.com/file/d/'+f.id+'/view')};
+
+async function sendByGmail(f){if(!f){toast('Save the file first, then send it.');return}
+  const me=S.me?.name||'';const base=f.name.replace(/\.[^.]+$/,'');const kind={TR:'technical report',PMS:'preventive maintenance report',DR:'daily report',NR:'network report'}[f.category]||'file';
+  const direct=GM.direct();const recent=GM.recent();
+  const defBody=`Good day,\n\nPlease see the attached ${kind}: ${f.name}\n\nThank you.\n\n${me}\nDeltech Parking Systems and Solutions Inc.`;
+  let file=null,fileErr='';const ready=GM.blob(f).then(x=>{file=x;const st=document.getElementById('gm-st');if(st){st.textContent=GM.size(x.size);st.classList.add('ok')}const big=x.size>24*1024*1024;const lk=document.getElementById('gm-link');if(big&&lk){lk.checked=true}}).catch(e=>{fileErr=e.message;const st=document.getElementById('gm-st');if(st)st.textContent='Could not read'});
+  const canShare=!direct&&!!navigator.canShare&&matchMedia('(pointer:coarse)').matches;
+  const how=direct?`Sends from your Gmail (${esc(GD.email)}) with the file attached. The first time, Google asks you to allow File Org to send email.`
+    :canShare?'Opens your phone’s share sheet with the file attached. Choose Gmail.':'Opens a new Gmail message and downloads the file. Drag the downloaded file into the email to attach it.';
+  const res=await modal({title:'Send by Gmail',cls:'gm-modal',body:`<div class="gm-modal" style="display:flex;flex-direction:column;gap:12px">
+    <div class="gm-file">${ficon(f.kind)}<div style="min-width:0"><div class="nm">${esc(f.name)}</div><div class="sz">${esc(f.folder||'')}</div></div><span class="st" id="gm-st">Preparing…</span></div>
+    <div class="field"><label for="gm-to">To</label><input class="input" id="gm-to" type="email" multiple autocomplete="email" inputmode="email" placeholder="name@example.com, another@example.com" spellcheck="false"></div>
+    ${recent.length?`<div class="gm-chips" aria-label="Recent recipients">${recent.map(r=>`<button type="button" data-gm-add="${esc(r)}">${esc(r)}</button>`).join('')}</div>`:''}
+    <div class="field"><label for="gm-cc">Cc <span class="muted" style="font-weight:400">(optional)</span></label><input class="input" id="gm-cc" type="email" multiple autocomplete="email" inputmode="email" spellcheck="false"></div>
+    <div class="field"><label for="gm-su">Subject</label><input class="input" id="gm-su" value="${esc(base)}"></div>
+    <div class="field"><label for="gm-bd">Message</label><textarea class="input" id="gm-bd" rows="7">${esc(defBody)}</textarea></div>
+    ${direct?`<div class="gm-seg" role="radiogroup" aria-label="How to send the file"><label><input type="radio" name="gm-how" value="attach" checked> Attach the file</label><label><input type="radio" name="gm-how" value="link" id="gm-link"> Google Drive link (for big files)</label></div>`:''}
+    <div class="gm-how">${I('info')}<span>${how}</span></div><div class="gm-err" id="gm-err"></div></div>`,
+    actions:[{label:'Cancel',cls:'ghost',value:()=>null},{label:direct?'Send':canShare?'Share…':'Open Gmail',cls:'primary',value:sc=>{
+      const err=$('#gm-err',sc);err.textContent='';const to=GM.emails($('#gm-to',sc).value),cc=GM.emails($('#gm-cc',sc).value);
+      const bad=[...to,...cc].filter(x=>!GM.valid(x));if(!to.length&&!canShare){err.textContent='Add at least one email address.';$('#gm-to',sc).focus();return false}
+      if(bad.length){err.textContent='Check this address: '+bad[0];return false}
+      const msg={to,cc,subject:$('#gm-su',sc).value.trim()||base,body:$('#gm-bd',sc).value,how:(sc.querySelector('input[name="gm-how"]:checked')||{}).value||'attach'};
+      if(direct){if(!GM.hasGmail()){msg.perm=GM.askGmail()/* started inside the tap, so the Google window is allowed */}return msg}
+      if(canShare){if(!file){err.textContent=fileErr||'Still preparing the file… tap again in a moment.';return false}
+        const data={files:[file],title:msg.subject,text:msg.body};if(!navigator.canShare(data)){err.textContent='This phone cannot share this file type. Use Download instead.';return false}
+        msg.share=navigator.share(data);return msg}
+      const u='https://mail.google.com/mail/?view=cm&fs=1'+(to.length?'&to='+encodeURIComponent(to.join(',')):'')+(cc.length?'&cc='+encodeURIComponent(cc.join(',')):'')+'&su='+encodeURIComponent(msg.subject)+'&body='+encodeURIComponent(msg.body+'\n\n(Attachment: '+f.name+')');
+      msg.win=window.open(u,'_blank','noopener');return msg}}]});
+  if(!res)return;
+  try{
+    if(res.share){await res.share;GM.remember(res.to);logAct('shared by email',f.name,f.id);return}
+    if(res.win!==undefined){await ready;if(file){const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=f.name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000)}
+      GM.remember(res.to);toast(file?'Gmail opened. Drag '+f.name+' from Downloads into the email.':'Gmail opened. Attach the file from File Org.');logAct('emailed',f.name,f.id);return}
+    if(res.perm)await res.perm;
+    toast('Sending '+f.name+'…');let body=res.body;let attach=null;
+    if(res.how==='link'){const link=await GM.driveLink(f,[...res.to,...res.cc]);body+=`\n\nOpen the file: ${link}`}
+    else{await ready;if(!file)throw new Error(fileErr||'Could not read the file.');attach=file}
+    await GM.sendGmail({to:res.to,cc:res.cc,subject:res.subject,body,file:attach});
+    GM.remember(res.to);toast('Sent to '+res.to.join(', '));logAct('emailed',f.name+' to '+res.to.join(', '),f.id)}
+  catch(e){if(e&&e.name==='AbortError')return;toast(e.message||'Could not send.',true)}}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-gm-add]');if(!b)return;const inp=document.getElementById('gm-to');if(!inp)return;const cur=GM.emails(inp.value);const v=b.dataset.gmAdd;if(!cur.includes(v))inp.value=[...cur,v].join(', ');b.remove();inp.focus()});
+
+/* menu + editor buttons */
+{const _fm=fileMenu;fileMenu=function(f,x,y){const _om=openMenu;openMenu=function(x2,y2,items){openMenu=_om;const i=items.findIndex(it=>it&&it.label==='Share in chat');items.splice(i<0?items.length-2:i+1,0,{label:'Send by Gmail',icon:'mail',run:()=>sendByGmail(f)});return _om(x2,y2,items)};try{return _fm.apply(this,arguments)}finally{openMenu=_om}}}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-gm-ed]');if(!b)return;const id={word:()=>W.fileId,sheet:()=>typeof X!=='undefined'&&X.fileId,pdf:()=>typeof P!=='undefined'&&P.fileId}[b.dataset.gmEd]?.();
+  const f=id&&fileById(id);if(!f){toast('Save the file first, then send it.');return}const dirty=b.dataset.gmEd==='word'?W.dirty:false;if(dirty)toast('Sending the last saved version. Save first to include your newest changes.');sendByGmail(f)});
+new MutationObserver(()=>{for(const[k,sid]of[['word','#wShare'],['sheet','#xShare'],['pdf','#pShare']]){const s=document.querySelector(sid);if(s&&!s.parentElement.querySelector(`[data-gm-ed="${k}"]`))s.insertAdjacentHTML('afterend',`<button class="btn sm" type="button" data-gm-ed="${k}">${I('mail')}Gmail</button>`)}}).observe(document.body,{childList:true,subtree:true});
 </script>
 <script>
 /* ================= PDF editor ================= */
