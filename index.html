@@ -2457,7 +2457,7 @@ async function ensureSig(){try{const s=await MySig.get();if(s)return s;const png
 /* ---------- Word editor: insert signature, resize any picture ---------- */
 document.addEventListener('mousedown',e=>{if(e.target.closest('#wSig'))e.preventDefault()},true);
 document.addEventListener('click',async e=>{if(!e.target.closest('#wSig'))return;const sel=saveSel();const s=await ensureSig();if(!s)return;restoreSel(sel);document.execCommand('insertHTML',false,`<img class="fo-sig" src="${s}" alt="Signature" style="width:150px;height:auto;vertical-align:bottom">`);$('#paper')?.dispatchEvent(new Event('input'));const imgs=$$('#paper img.fo-sig');const last=imgs[imgs.length-1];if(last)setTimeout(()=>showImgBar(last),50)});
-document.addEventListener('click',e=>{if(e.target.closest('#imgBar,#wGrid,.ribbon,.rtabs,.wmenu,.scrim'))return;const img=e.target.closest('#paper img');if(img){showImgBar(img);return}hideImgBar()});
+document.addEventListener('click',e=>{if(Date.now()-(window._foDragEnd||0)<200)return;if(e.target.closest('#imgBar,#imgFrame,#wGrid,.ribbon,.rtabs,.wmenu,.scrim'))return;const img=e.target.closest('#paper img');if(img){showImgBar(img);return}hideImgBar()});
 function hideImgBar(){$('#imgBar')?.remove();$$('#paper img.img-sel').forEach(i=>i.classList.remove('img-sel'))}
 function showImgBar(img){hideImgBar();img.classList.add('img-sel');window._lastImg=img;const z=W.zoom||1;const w=Math.round(img.getBoundingClientRect().width/z);
   const b=document.createElement('div');b.id='imgBar';b.className='img-bar';b.innerHTML=`<span>Size</span><input type="range" min="30" max="700" value="${w}" id="imgW" aria-label="Picture width"><span class="num" id="imgWv" style="width:44px">${w}px</span><button type="button" class="btn sm ghost danger" data-ia="del">Remove</button>`;document.body.appendChild(b);
@@ -3137,7 +3137,7 @@ showImgBar=function(img){hideImgBar();img.classList.add('img-sel');window._lastI
   const b=document.createElement('div');b.id='imgBar';b.className='img-bar';
   b.innerHTML=`<button type="button" class="btn sm" data-ia="wrap" title="Wrap Text">${WI[WP.wrapOf(img)==='front'?'front':WP.wrapOf(img)]}Wrap</button><span class="sep"></span><span>Size</span><input type="range" min="20" max="900" value="${w}" id="imgW" aria-label="Picture width"><span class="num" id="imgWv" style="width:44px">${w}px</span><span class="sep"></span><button type="button" class="btn sm ghost" data-ia="more" title="More picture tools">${I('more')}</button><button type="button" class="btn sm ghost danger" data-ia="del">Remove</button>`;
   document.body.appendChild(b);
-  const place=()=>{const r=img.getBoundingClientRect();b.style.left=Math.max(8,Math.min(r.left,innerWidth-b.offsetWidth-8))+'px';b.style.top=Math.max(8,r.bottom+8>innerHeight-50?r.top-b.offsetHeight-8:r.bottom+8)+'px'};place();b._place=place;
+  const place=()=>{const r=img.getBoundingClientRect();b.style.left=Math.max(8,Math.min(r.left,innerWidth-b.offsetWidth-8))+'px';const gp=matchMedia('(pointer:coarse)').matches?22:14;b.style.top=Math.max(8,r.bottom+gp+b.offsetHeight>innerHeight-60?r.top-b.offsetHeight-gp:r.bottom+gp)+'px'};place();b._place=place;
   b.addEventListener('mousedown',e=>{if(e.target.tagName!=='INPUT')e.preventDefault()});
   $('#imgW',b).oninput=e=>{img.style.maxWidth='none';img.style.width=e.target.value+'px';img.style.height='auto';img.removeAttribute('width');img.removeAttribute('height');$('#imgWv',b).textContent=e.target.value+'px';place();WP.mark()};
   $('[data-ia="wrap"]',b).onclick=e=>WP.menu(e.currentTarget,WP.wrapItems(img));
@@ -3149,19 +3149,19 @@ const _hideImgBar=hideImgBar;hideImgBar=function(){_hideImgBar();WP.showPicTab(f
 WP.refreshPic=img=>{if(window._lastImg===img&&$('#imgBar')){const keep=img;showImgBar(keep)}};
 
 /* drag pictures that are placed Behind or In Front of text; arrow keys nudge */
-document.addEventListener('pointerdown',e=>{const img=e.target.closest&&e.target.closest('#paper img.fo-float');if(!img||e.button>0)return;e.preventDefault();
+WP.dragFloat=(img,e)=>{e.preventDefault();
   const sx=e.clientX,sy=e.clientY,l0=parseFloat(img.style.left)||0,t0=parseFloat(img.style.top)||0;let moved=false;img.setPointerCapture?.(e.pointerId);
   /* real on-screen scale (phone fit / zoom), measured so the picture follows the finger exactly */
   const z=(()=>{const a=img.getBoundingClientRect().left;img.style.left=(l0+100)+'px';const b=img.getBoundingClientRect().left;img.style.left=l0+'px';const r=(b-a)/100;return r>0.05?r:(W.zoom||1)})();
   const mv=ev=>{const dx=(ev.clientX-sx)/z,dy=(ev.clientY-sy)/z;if(!moved&&Math.abs(dx)+Math.abs(dy)<3)return;moved=true;img.classList.add('dragging');img.style.left=Math.round(l0+dx)+'px';img.style.top=Math.round(t0+dy)+'px';$('#imgBar')?._place?.()};
-  const up=()=>{img.removeEventListener('pointermove',mv);img.removeEventListener('pointerup',up);img.removeEventListener('pointercancel',up);img.classList.remove('dragging');if(moved)WP.mark();showImgBar(img)};
-  img.addEventListener('pointermove',mv);img.addEventListener('pointerup',up);img.addEventListener('pointercancel',up)},true);
+  const up=()=>{window._foDragEnd=Date.now();img.removeEventListener('pointermove',mv);img.removeEventListener('pointerup',up);img.removeEventListener('pointercancel',up);img.classList.remove('dragging');if(moved)WP.mark();showImgBar(img)};
+  img.addEventListener('pointermove',mv);img.addEventListener('pointerup',up);img.addEventListener('pointercancel',up)};
+document.addEventListener('pointerdown',e=>{const img=e.target.closest&&e.target.closest('#paper img.fo-float');if(!img||e.button>0)return;WP.dragFloat(img,e)},true);
 /* pictures in the text flow (In line, Square, Top and bottom) can be dragged too:
    drop them where the text cursor shows; Square pictures go left or right by where you drop */
 document.addEventListener('dragstart',e=>{if(e.target.closest&&e.target.closest('#paper img'))e.preventDefault()},true);
 WP.caretAt=(x,y)=>{let r=null;if(document.caretRangeFromPoint)r=document.caretRangeFromPoint(x,y);else if(document.caretPositionFromPoint){const c=document.caretPositionFromPoint(x,y);if(c){r=document.createRange();r.setStart(c.offsetNode,c.offset);r.collapse(true)}}return r};
-document.addEventListener('pointerdown',e=>{const img=e.target.closest&&e.target.closest('#paper img:not(.fo-float)');if(!img||e.button>0)return;
-  if(e.pointerType!=='mouse'&&!img.classList.contains('img-sel'))return;/* on touch: tap once to select, then drag */
+WP.dragFlow=(img,e)=>{
   const paper=WP.paper();const sx=e.clientX,sy=e.clientY;let on=false,ghost=null,mark=null,range=null,hid=[];const mode=WP.wrapOf(img);
   if(e.pointerType!=='mouse')e.preventDefault();
   const start=()=>{on=true;const r=img.getBoundingClientRect();ghost=img.cloneNode();ghost.removeAttribute('id');ghost.className='';
@@ -3176,10 +3176,13 @@ document.addEventListener('pointerdown',e=>{const img=e.target.closest&&e.target
     if(r){let n=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement;const ce=n&&n.closest('[contenteditable="false"]');if(ce&&paper.contains(ce)){r=document.createRange();r.setStartBefore(ce);r.collapse(true)}}
     range=r;if(r){const rc=r.getClientRects()[0]||r.startContainer.nodeType===1&&r.startContainer.getBoundingClientRect?.();if(rc){mark.style.display='block';mark.style.left=rc.left+'px';mark.style.top=rc.top+'px';mark.style.height=Math.max(14,rc.height||18)+'px'}}else mark.style.display='none'};
   const up=ev=>{document.removeEventListener('pointermove',mv,true);document.removeEventListener('pointerup',up,true);document.removeEventListener('pointercancel',up,true);
-    if(!on)return;hid.forEach(x=>x.style.visibility='');ghost.remove();mark.remove();img.style.opacity='';img.style.pointerEvents='';document.body.style.userSelect='';
+    if(!on)return;window._foDragEnd=Date.now();hid.forEach(x=>x.style.visibility='');ghost.remove();mark.remove();img.style.opacity='';img.style.pointerEvents='';document.body.style.userSelect='';
     if(ev.type==='pointerup'&&range){range.insertNode(img);if(mode==='square'){const pr=paper.getBoundingClientRect();const right=ev.clientX>pr.left+pr.width/2;img.style.float=right?'right':'left';img.style.margin=right?'4px 0 6px 12px':'4px 12px 6px 0'}WP.mark()}
     showImgBar(img)};
-  document.addEventListener('pointermove',mv,true);document.addEventListener('pointerup',up,true);document.addEventListener('pointercancel',up,true)},true);
+  document.addEventListener('pointermove',mv,true);document.addEventListener('pointerup',up,true);document.addEventListener('pointercancel',up,true)};
+document.addEventListener('pointerdown',e=>{const img=e.target.closest&&e.target.closest('#paper img:not(.fo-float)');if(!img||e.button>0)return;
+  if(e.pointerType!=='mouse'&&!img.classList.contains('img-sel'))return;/* on touch: tap once to select, then drag */
+  WP.dragFlow(img,e)},true);
 document.addEventListener('keydown',e=>{const img=window._lastImg;if(!img||!$('#imgBar')||!img.isConnected)return;if(e.target.closest&&e.target.closest('input,textarea,select'))return;
   if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();img.remove();hideImgBar();WP.mark();return}
   if(!img.classList.contains('fo-float'))return;const d=e.shiftKey?10:1;const k={ArrowLeft:[-d,0],ArrowRight:[d,0],ArrowUp:[0,-d],ArrowDown:[0,d]}[e.key];if(!k)return;e.preventDefault();
@@ -3979,6 +3982,57 @@ async function fileToPdf(f){const ext=String(f.ext||'').toLowerCase();
   catch(e){toast(e.message,true)}}
 {const _fm=fileMenu;fileMenu=function(f,x,y){const _om=openMenu;openMenu=function(x2,y2,items){openMenu=_om;if(PDFS.can()&&OFFICE_EXT.includes(String(f.ext||'').toLowerCase())){const i=items.findIndex(it=>it&&it.label==='Download');items.splice(i<0?items.length-2:i,0,{label:'Save as PDF',icon:'pdf',run:()=>fileToPdf(f)})}return _om(x2,y2,items)};try{return _fm.apply(this,arguments)}finally{openMenu=_om}}}
 new MutationObserver(()=>{const ex=document.getElementById('wSave')||document.getElementById('wExport');if(ex&&!document.getElementById('wPdf')){ex.insertAdjacentHTML('afterend',`<button class="btn sm" type="button" id="wPdf">${I('pdf')}Save as PDF</button>`);document.getElementById('wPdf').onclick=saveAsPdf}}).observe(document.body,{childList:true,subtree:true});
+</script>
+<style>
+/* ================= picture frame: resize corners + move grip (computer and phone) ================= */
+/* pictures in the text stay on top of neighbouring lines and boxes, so they can always be clicked */
+.paper img:not(.fo-float){position:relative;z-index:1}
+#imgFrame{position:fixed;z-index:64;pointer-events:none;border:1.5px solid var(--accent,#1C5B49);border-radius:2px;box-shadow:0 0 0 3px rgba(28,91,73,.12)}
+#imgFrame .h{position:absolute;width:12px;height:12px;background:#fff;border:1.5px solid var(--accent,#1C5B49);border-radius:3px;pointer-events:auto;touch-action:none;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+#imgFrame .h[data-c="nw"]{left:-7px;top:-7px;cursor:nwse-resize}#imgFrame .h[data-c="ne"]{right:-7px;top:-7px;cursor:nesw-resize}
+#imgFrame .h[data-c="sw"]{left:-7px;bottom:-7px;cursor:nesw-resize}#imgFrame .h[data-c="se"]{right:-7px;bottom:-7px;cursor:nwse-resize}
+#imgFrame .grip{position:absolute;left:50%;top:-40px;transform:translateX(-50%);height:30px;padding:0 11px 0 9px;display:flex;align-items:center;gap:6px;border-radius:99px;border:0;background:var(--accent,#1C5B49);color:#fff;font:600 12px/1 var(--f-body,system-ui);pointer-events:auto;touch-action:none;cursor:grab;box-shadow:0 4px 14px rgba(0,0,0,.22);white-space:nowrap}
+#imgFrame .grip:active{cursor:grabbing}#imgFrame .grip svg{width:15px;height:15px}
+#imgFrame.low .grip{top:auto;bottom:-40px}
+#imgFrame.tiny .h:not([data-c="se"]){display:none}
+.img-bar{max-width:calc(100vw - 16px);overflow-x:auto;scrollbar-width:none}.img-bar::-webkit-scrollbar{display:none}
+@media (max-width:860px){.img-bar input[type=range]{width:auto;min-width:70px;flex:1 1 100px}.img-bar{gap:6px}}
+#imgFrame.busy .h,#imgFrame.busy .grip{opacity:0}
+@media (pointer:coarse){#imgFrame .h{width:22px;height:22px;border-radius:50%}#imgFrame .h[data-c="nw"]{left:-12px;top:-12px}#imgFrame .h[data-c="ne"]{right:-12px;top:-12px}#imgFrame .h[data-c="sw"]{left:-12px;bottom:-12px}#imgFrame .h[data-c="se"]{right:-12px;bottom:-12px}#imgFrame .grip{height:36px;top:-48px;font-size:13px}#imgFrame.low .grip{bottom:-48px}}
+</style>
+<script>
+const IF={};
+IF.scale=img=>{const cw=parseFloat(getComputedStyle(img).width)||img.offsetWidth||1;return(img.getBoundingClientRect().width/cw)||1};
+IF.show=img=>{IF.hide();const f=document.createElement('div');f.id='imgFrame';f._img=img;
+  f.innerHTML=`${['nw','ne','sw','se'].map(c=>`<span class="h" data-c="${c}" role="button" aria-label="Resize picture"></span>`).join('')}<button type="button" class="grip" aria-label="Move picture"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>Move</button>`;
+  document.body.appendChild(f);
+  f.querySelector('.grip').addEventListener('pointerdown',e=>{if(e.button>0)return;e.preventDefault();e.stopPropagation();(img.classList.contains('fo-float')?WP.dragFloat:WP.dragFlow)(img,e)});
+  f.querySelectorAll('.h').forEach(h=>h.addEventListener('pointerdown',e=>{if(e.button>0)return;e.preventDefault();e.stopPropagation();IF.resize(img,h.dataset.c,e)}));
+  const loop=()=>{if(!f.isConnected)return;if(!img.isConnected||!img.classList.contains('img-sel')){f.remove();return}
+    const r=img.getBoundingClientRect();f.style.left=r.left-2+'px';f.style.top=r.top-2+'px';f.style.width=r.width+4+'px';f.style.height=r.height+4+'px';
+    f.style.display=img.style.opacity==='0.3'||r.width<1?'none':'block';const bb=$('#imgBar')?.getBoundingClientRect();f.classList.toggle('low',r.top<110||!!(bb&&bb.bottom<=r.top+2));f.classList.toggle('tiny',r.width<90||r.height<56);requestAnimationFrame(loop)};loop()};
+IF.hide=()=>{$('#imgFrame')?.remove()};
+IF.resize=(img,c,e)=>{const z=IF.scale(img);const cs=getComputedStyle(img);const w0=parseFloat(cs.width),h0=parseFloat(cs.height),ratio=h0/w0||1;
+  const l0=parseFloat(img.style.left)||0,t0=parseFloat(img.style.top)||0,fl=img.classList.contains('fo-float');const sx=e.clientX,sy=e.clientY;const fx=c.includes('w')?-1:1,fy=c.includes('n')?-1:1;
+  const fr=$('#imgFrame');fr?.classList.add('busy');const tgt=e.target;tgt.setPointerCapture?.(e.pointerId);
+  img.style.maxWidth='none';img.removeAttribute('width');img.removeAttribute('height');
+  const mv=ev=>{ev.preventDefault();const dx=(ev.clientX-sx)/z*fx,dy=(ev.clientY-sy)/z*fy;const d=Math.abs(dx)>Math.abs(dy)/ratio?dx:dy/ratio;
+    const w=Math.round(Math.max(16,Math.min(1200,w0+d)));img.style.width=w+'px';img.style.height='auto';
+    if(fl){if(fx<0)img.style.left=Math.round(l0+(w0-w))+'px';if(fy<0)img.style.top=Math.round(t0+(w0-w)*ratio)+'px'}
+    const s=$('#imgW'),v=$('#imgWv');if(s)s.value=w;if(v)v.textContent=w+'px';$('#imgBar')?._place?.()};
+  const up=()=>{window._foDragEnd=Date.now();tgt.removeEventListener('pointermove',mv);tgt.removeEventListener('pointerup',up);tgt.removeEventListener('pointercancel',up);fr?.classList.remove('busy');WP.mark()};
+  tgt.addEventListener('pointermove',mv);tgt.addEventListener('pointerup',up);tgt.addEventListener('pointercancel',up)};
+{const _s=showImgBar,_h=hideImgBar;showImgBar=function(img){const r=_s.apply(this,arguments);if(img&&img.closest&&img.closest('#paper'))IF.show(img);
+    /* the size slider shows the real width, also when the page is zoomed to fit a phone */
+    const s=$('#imgW'),v=$('#imgWv');if(s&&img){const w=Math.round(parseFloat(getComputedStyle(img).width));s.value=w;if(v)v.textContent=w+'px'}return r};
+  hideImgBar=function(){IF.hide();return _h.apply(this,arguments)}}
+/* pictures placed Behind text: grab them where they are, even though text is on top */
+document.addEventListener('pointerdown',e=>{if(e.button>0||!e.target.closest||e.target.closest('img,#imgFrame,#imgBar')||!e.target.closest('#paper'))return;
+  const hit=document.elementsFromPoint(e.clientX,e.clientY).find(el=>el.matches&&el.matches('#paper img.fo-float'));if(!hit||+hit.style.zIndex>=0)return;
+  const pw=WP.paper()?.getBoundingClientRect().width||1;if(hit.getBoundingClientRect().width>pw*0.6)return;
+  /* on a phone the finger may want to scroll: select it, then the Move button drags it */
+  if(e.pointerType!=='mouse'){window._foDragEnd=Date.now()+400;showImgBar(hit);return}
+  showImgBar(hit);WP.dragFloat(hit,e)},true);
 </script>
 <script>
 /* ================= PDF editor ================= */
