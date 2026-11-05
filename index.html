@@ -1803,10 +1803,10 @@ GD.list=async(q,fields='files(id,name,mimeType,parents,size,modifiedTime,appProp
 GD.mkFolder=async(name,parent,app)=>GD.made(await GD.json(`${GAPI.drive}/files?fields=id,name&supportsAllDrives=true`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,mimeType:GD_FOLDER,parents:parent?[parent]:undefined,appProperties:app})}));
 GD.made=f=>{if(f&&f.id&&GD.sheet)GD.handOver(f.id);return f};
 GD.upload=async(meta,blob,fileId)=>{const r=await GD.upload0(meta,blob,fileId);if(!fileId)GD.made(r);return r};
-GD.upload0=async(meta,blob,fileId)=>{const isNew=!fileId;
-  if(blob.size<=4.5*1024*1024){const b='fo'+gdId();const body=new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,JSON.stringify(meta),`\r\n--${b}\r\nContent-Type: ${meta.mimeType||'application/octet-stream'}\r\n\r\n`,blob,`\r\n--${b}--`]);
+GD.upload0=async(meta,blob,fileId)=>{const isNew=!fileId;const mt=(meta.mimeType&&!/^application\/vnd\.google-apps\./.test(meta.mimeType)?meta.mimeType:blob.type)||'application/octet-stream';
+  if(blob.size<=4.5*1024*1024){const b='fo'+gdId();const body=new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,JSON.stringify(meta),`\r\n--${b}\r\nContent-Type: ${mt}\r\n\r\n`,blob,`\r\n--${b}--`]);
     return GD.json(`${GAPI.up}/files${isNew?'':'/'+fileId}?uploadType=multipart&supportsAllDrives=true&fields=id,name,size,modifiedTime,headRevisionId${isNew&&meta.parents?'':''}`,{method:isNew?'POST':'PATCH',headers:{'content-type':'multipart/related; boundary='+b},body})}
-  const r=await GD.api(`${GAPI.up}/files${isNew?'':'/'+fileId}?uploadType=resumable&supportsAllDrives=true&fields=id,name,size,modifiedTime,headRevisionId`,{method:isNew?'POST':'PATCH',headers:{'content-type':'application/json; charset=UTF-8','x-upload-content-type':meta.mimeType||'application/octet-stream'},body:JSON.stringify(meta)});
+  const r=await GD.api(`${GAPI.up}/files${isNew?'':'/'+fileId}?uploadType=resumable&supportsAllDrives=true&fields=id,name,size,modifiedTime,headRevisionId`,{method:isNew?'POST':'PATCH',headers:{'content-type':'application/json; charset=UTF-8','x-upload-content-type':mt},body:JSON.stringify(meta)});
   const loc=r.headers.get('location');if(!loc)throw gdErr(500,'Google Drive did not accept the upload.');
   const r2=await GD.rf(loc,{method:'PUT',body:blob});if(!r2.ok)throw gdErr(r2.status,'The upload to Google Drive failed ('+r2.status+').');return r2.json()};
 GD.download=async(id,rev)=>(await GD.api(`${GAPI.drive}/files/${id}${rev?'/revisions/'+rev:''}?alt=media&supportsAllDrives=true`)).blob();
@@ -1990,6 +1990,11 @@ GD.handle=async(url,init={})=>{const u=new URL(url,location.origin);const p=u.pa
     const prev=await GD.keepRevision(id);const f=await GD.upload({mimeType:gdMime(doc.name)},old,id);
     const versions=[...(doc.versions||[])];if(prev)versions.push({rev:prev.headRevisionId,at:doc.updated,by:doc.updatedBy||doc.ownerId,size:doc.size});
     await GD.put('files',id,{...doc,size:old.size,hasEnv:false,updated:Date.now(),updatedBy:S.me.id,versions:versions.slice(-20),driveTime:Date.parse(f.modifiedTime)||Date.now()});return gdRes({ok:true})}
+  if(p==='/api/convert/pdf'&&method==='POST'){const ext=(u.searchParams.get('ext')||'docx').toLowerCase();const blob=await gdBody(init);
+    const to=['xls','xlsx','ods','csv'].includes(ext)?'application/vnd.google-apps.spreadsheet':'application/vnd.google-apps.document';
+    const tmp=await GD.upload0({name:'pdf-'+gdId(),parents:[GD.sysSub.previews],mimeType:to},new Blob([blob],{type:gdMime('x.'+ext)}));
+    try{const pdf=await (await GD.api(`${GAPI.drive}/files/${tmp.id}/export?mimeType=application/pdf`)).blob();return new Response(pdf,{headers:{'content-type':'application/pdf'}})}
+    finally{GD.api(`${GAPI.drive}/files/${tmp.id}?supportsAllDrives=true`,{method:'DELETE'}).catch(()=>{})}}
   if((m=p.match(/^\/api\/preview\/([\w-]+)$/)))return new Response(await GD.preview(m[1]),{headers:{'content-type':'application/pdf'}});
   if((m=p.match(/^\/api\/blob\/([\w-]+)$/))){const doc=GD.db.files[m[1]];if(!doc)return gdRes({error:'File not found'},404);const b=await GD.download(m[1]);return new Response(b,{headers:{'content-type':gdMime(doc.name)}})}
   if((m=p.match(/^\/api\/db\/(\w+)(?:\/([\w-]+))?$/))){const col=m[1],id=m[2];if(!GD.db[col]||col==='signatures')return gdRes({error:'Unknown collection'},404);
@@ -3796,6 +3801,55 @@ RP.fit=async file=>{const url=await new Promise((r,j)=>{const fr=new FileReader(
 document.addEventListener('click',e=>{const td=e.target.closest&&e.target.closest('#paper td[data-ph]');if(!td||td.querySelector('img'))return;e.preventDefault();
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=async()=>{const f=inp.files[0];if(!f)return;try{const src=await RP.fit(f);
     td.style.background='none';td.style.height='auto';td.innerHTML=`<img src="${src}" alt="${esc(f.name.replace(/\.[^.]+$/,''))}" style="width:100%;height:auto;display:block">`;$('#paper').dispatchEvent(new Event('input'));toast('Photo added')}catch(err){toast('Could not read that photo.',true)}};inp.click()});
+</script>
+<style>
+/* ================= Save as PDF ================= */
+.pdf-opts{display:flex;flex-direction:column;gap:8px}
+.pdf-opts label{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;transition:border-color .15s,background .15s}
+.pdf-opts label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.pdf-opts input{accent-color:var(--accent);margin:3px 0 0;width:16px;height:16px;flex:none}
+.pdf-opts b{display:block;font-size:13.5px}.pdf-opts span{font-size:12.5px;color:var(--ink-3)}
+@media print{
+  body.fo-printing *{visibility:hidden!important}
+  body.fo-printing #paper,body.fo-printing #paper *{visibility:visible!important}
+  body.fo-printing #paper{position:absolute!important;left:0!important;top:0!important;zoom:1!important;box-shadow:none!important;margin:0!important;outline:none!important}
+  body.fo-printing #paper img.img-sel{outline:none!important}
+  body.fo-printing td[data-ph]:not(:has(img)){background:none!important;color:transparent!important}
+  body.fo-printing hr.pb{break-after:page;border:0}
+}
+</style>
+<script>
+const PDFS={};
+PDFS.can=()=>S.mode==='local';/* office PC (LibreOffice) or Google Drive can make the PDF file */
+PDFS.convert=async(blob,ext='docx')=>{const r=await fetch('/api/convert/pdf?ext='+ext,{method:'POST',headers:{'x-fo-key':typeof LocalAPI!=='undefined'&&LocalAPI.key?LocalAPI.key():''},body:blob});
+  if(!r.ok){let m='Could not make the PDF ('+r.status+').';try{m=(await r.json()).error||m}catch(e){}throw Object.assign(new Error(m),{status:r.status})}return r.blob()};
+/* exact same pages as on screen, through the browser's own "Save as PDF" */
+PDFS.print=(title)=>{const pg=DW.page();const st=document.createElement('style');st.id='foPrintPage';st.textContent=`@page{size:${(pg.pageW/96).toFixed(2)}in ${(pg.pageH/96).toFixed(2)}in;margin:0}`;document.head.appendChild(st);
+  const old=document.title;document.title=title;document.body.classList.add('fo-printing');$('#paper')?.blur();
+  const done=()=>{document.body.classList.remove('fo-printing');st.remove();document.title=old;removeEventListener('afterprint',done)};addEventListener('afterprint',done);setTimeout(()=>{window.print();setTimeout(done,1500)},60)};
+PDFS.saveToLibrary=async(pdf,f,base)=>{const meta={name:base+'.pdf',originalName:base+'.pdf',ext:'pdf',kind:'pdf',mime:'application/pdf',size:pdf.size,category:f?.category||W.cat||'OTHER',date:f?.date||isoToday(),
+  folder:f?.folder||(W.site?W.site:'Unassigned'),fields:{...(f?.fields||{})},ai:{confidence:f?.ai?.confidence||.6,summary:'PDF copy of '+(f?.name||base),source:'pdf'}};return saveFileToLibrary(meta,pdf)};
+async function saveAsPdf(){const paper=$('#paper');if(!paper){return}const f=W.fileId?fileById(W.fileId):null;const base=($('#edName-doc')?.value||'document').replace(/\.\w+$/,'')||'document';
+  const can=PDFS.can();const res=await modal({title:'Save as PDF',body:`<p class="muted" style="margin:0 0 4px;font-size:13px">${esc(base)}.pdf</p><div class="pdf-opts" role="radiogroup">
+    ${can?`<label><input type="radio" name="pdfm" value="lib" checked><div><b>Save to File Org</b><span>Saved next to the report${f?.folder?' in '+esc(f.folder):''}, so the team can open and send it.</span></div></label>
+    <label><input type="radio" name="pdfm" value="dl"><div><b>Download PDF</b><span>Save the PDF file on this device.</span></div></label>`:''}
+    <label><input type="radio" name="pdfm" value="print" ${can?'':'checked'}><div><b>Print / Save as PDF</b><span>Opens the print window. Choose “Save as PDF”. Exactly what you see on screen.</span></div></label></div>`,
+    actions:[{label:'Cancel',cls:'ghost',value:()=>null},{label:'Make PDF',cls:'primary',value:sc=>(sc.querySelector('input[name="pdfm"]:checked')||{}).value||'print'}]});
+  if(!res)return;if(res==='print'){PDFS.print(base);return}
+  const busy=toast('Making the PDF…');
+  try{const {blob}=await docExport(paper.innerHTML,base);const pdf=await PDFS.convert(blob,'docx');
+    if(res==='dl'){saveDownload(base+'.pdf',pdf);toast('PDF downloaded')}
+    else{await PDFS.saveToLibrary(pdf,f,base);toast('PDF saved to File Org',false,{action:{label:'Open file list',run:()=>{location.hash='#files'}}})}}
+  catch(e){toast(e.status===501?'This PC has no LibreOffice, so File Org cannot make the PDF here. Use “Print / Save as PDF” instead.':e.message,true,{action:{label:'Print instead',run:()=>PDFS.print(base)}})}}
+/* library files (Word, Excel): Save as PDF from the file menu */
+async function fileToPdf(f){const base=f.name.replace(/\.[^.]+$/,'');toast('Making the PDF…');
+  try{const r=await fetch('/api/preview/'+f.id+(S.mode==='local'&&LocalAPI.key?'?k='+encodeURIComponent(LocalAPI.key()):''));if(!r.ok){let m='Could not make the PDF.';try{m=(await r.json()).error||m}catch(e){}throw new Error(m)}
+    const pdf=await r.blob();const choice=await modal({title:'PDF ready',body:`<p style="margin:0">${esc(base)}.pdf is ready.</p>`,actions:[{label:'Download',cls:'ghost',value:()=>'dl'},{label:'Save to File Org',cls:'primary',value:()=>'lib'}]});
+    if(choice==='dl'){saveDownload(base+'.pdf',pdf)}else if(choice==='lib'){await PDFS.saveToLibrary(pdf,f,base);toast('PDF saved to File Org')}}
+  catch(e){toast(e.message,true)}}
+{const _fm=fileMenu;fileMenu=function(f,x,y){const _om=openMenu;openMenu=function(x2,y2,items){openMenu=_om;if(PDFS.can()&&OFFICE_EXT.includes(String(f.ext||'').toLowerCase())){const i=items.findIndex(it=>it&&it.label==='Download');items.splice(i<0?items.length-2:i,0,{label:'Save as PDF',icon:'pdf',run:()=>fileToPdf(f)})}return _om(x2,y2,items)};try{return _fm.apply(this,arguments)}finally{openMenu=_om}}}
+/* PDF button in the Word editor bar */
+new MutationObserver(()=>{const ex=document.getElementById('wSave')||document.getElementById('wExport');if(ex&&!document.getElementById('wPdf')){ex.insertAdjacentHTML('afterend',`<button class="btn sm" type="button" id="wPdf">${I('pdf')}Save as PDF</button>`);document.getElementById('wPdf').onclick=saveAsPdf}}).observe(document.body,{childList:true,subtree:true});
 </script>
 <script>
 /* ================= PDF editor ================= */
