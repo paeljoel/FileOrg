@@ -1335,7 +1335,15 @@ async function namingModal(ext,init={}){
   if(!r)return null;let dest=r.dest;delete r.dest;if(dest==='__new'){const p=await promptBox('New folder','Folder path. Use / for subfolders','');dest=p?canonPath(p):''}const {category,date,...rest}=r;rest.site=canonSite(rest.site);r.site=rest.site;
   return {name:buildName(r,ext),category,date,fields:rest,folder:dest||folderFor(category,date,rest.site),ext,ai:{confidence:f.source==='ai'?Math.max(.8,f.confidence||0):1,summary:f.summary||'',source:f.source||'manual'}};
 }
+/* Word turns see-through parts of pictures black when it imports this kind of file, so give them a white backing first */
+async function flattenPngs(html){if(!/data:image\/(png|gif|webp)/i.test(html))return html;const d=document.createElement('div');d.innerHTML=html;
+  for(const im of d.querySelectorAll('img')){const src=im.getAttribute('src')||'';if(!/^data:image\/(png|gif|webp)/i.test(src))continue;
+    try{const i=await loadImg(src);const c=document.createElement('canvas');c.width=i.naturalWidth||i.width;c.height=i.naturalHeight||i.height;const x=c.getContext('2d');
+      x.drawImage(i,0,0);const px=x.getImageData(0,0,c.width,c.height).data;let alpha=false;for(let k=3;k<px.length;k+=16)if(px[k]<250){alpha=true;break}if(!alpha)continue;
+      x.globalCompositeOperation='destination-over';x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);im.setAttribute('src',c.toDataURL('image/png'))}catch(e){}}
+  return d.innerHTML}
 async function docExport(html,base){
+  html=await flattenPngs(html);
   const full=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Calibri,sans-serif;font-size:11pt}table{border-collapse:collapse}td,th{border:1px solid #999;padding:4px 6px}h2{color:#1F3864}</style></head><body>${html}</body></html>`;
   try{await loadScript(LIB.htmldocx);return {blob:htmlDocx.asBlob(full),name:base+'.docx'}}
   catch(e){return {blob:new Blob(['﻿'+full.replace('<html>','<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">')],{type:'application/msword'}),name:base+'.doc'}}
