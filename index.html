@@ -1166,8 +1166,8 @@ function queueFiles(list){
 }
 VIEWS.upload={html(){const c=S.config;return `<div class="page-head"><div><div class="eyebrow">Smart intake</div><h1>AI Upload</h1><p class="sub">Drop reports in any format. File Org reads each one, decides whether it is a Technical Report or a PMS record, detects the site, and proposes a name in the company convention. Each file is saved into its site's folder. Check the fields, then save.</p></div>${S.uploads.some(u=>u.status==='review')?`<button class="btn primary" id="saveAll">${I('check')}Save all reviewed</button>`:''}</div>
   <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose files to upload">${I('upload')}<h3>Drop files here or click to browse</h3><p class="muted" style="margin:6px 0 0">PDF, Word, Excel, images and text · up to ${S.mode==='local'?(S.localInfo?.maxUploadMB||500):20} MB each</p>
-  ${S.mode==='local'&&S.localInfo?.aiEnabled?`<div class="muted" style="font-size:12px;margin-top:10px">Read by ${S.localInfo.aiProvider==='local'?'free local AI':'Claude'} · <span class="mono">${esc(S.localInfo.aiModel)}</span>${S.localInfo.aiProvider==='local'?' · stays on this network':''}</div>`:''}<div class="rule-line"><code><span class="seg-tr">TR</span>_DATE_GATE-OR-PLACE_SITENAME_DAMAGE</code><code><span class="seg-pms">TR</span>_DATE_PLACE_<span class="seg-pms">PMS</span></code></div></div>
-  ${S.uploadSite?`<div class="banner" style="margin-top:14px">${I('pin')}<span>Files without a detected site will be filed under <b>${esc(S.uploadSite)}</b>.</span><button class="btn sm ghost" id="clrSite" style="margin-left:auto">Clear</button></div>`:''}${!S.cap.sample?`<div class="banner" style="margin-top:14px">${I('info')}<span>${S.mode==='local'?`<b>AI reading is off on the office PC.</b> Names come from built-in rules until it is on.${S.localInfo?.aiNote?` <span class="muted">Reason: ${esc(S.localInfo.aiNote)}</span>`:''} <button class="btn sm" id="aiRecheck" type="button" style="margin-left:6px">${I('refresh')}Check again</button>`:'AI reading is not available in this view, so names come from rule-based detection of dates, gates and keywords. Review each one before saving.'}</span></div>`:''}
+  ${S.mode==='local'&&S.localInfo?.aiEnabled?`<div class="muted" style="font-size:12px;margin-top:10px">Read by ${S.localInfo.aiProvider==='gemini'?'Google Gemini (free)':S.localInfo.aiProvider==='local'?'free local AI':'Claude'} · <span class="mono">${esc(S.localInfo.aiModel)}</span>${S.localInfo.aiProvider==='local'?' · stays on this network':''}${S.localInfo.aiProvider==='gemini'?' <button class="btn sm ghost" id="gdAiSet" type="button" style="height:24px;margin-left:6px">Change</button>':''}</div>`:''}<div class="rule-line"><code><span class="seg-tr">TR</span>_DATE_GATE-OR-PLACE_SITENAME_DAMAGE</code><code><span class="seg-pms">TR</span>_DATE_PLACE_<span class="seg-pms">PMS</span></code></div></div>
+  ${S.uploadSite?`<div class="banner" style="margin-top:14px">${I('pin')}<span>Files without a detected site will be filed under <b>${esc(S.uploadSite)}</b>.</span><button class="btn sm ghost" id="clrSite" style="margin-left:auto">Clear</button></div>`:''}${!S.cap.sample?`<div class="banner" style="margin-top:14px">${I('info')}<span>${S.localInfo?.storage==='gdrive'?`<b>AI reading is off.</b> Names come from built-in rules that read Date of Service, Branch, Subject and Location. <button class="btn sm" id="gdAiSet" type="button" style="margin-left:6px">${I('sparkle')}Turn on free AI</button>`:S.mode==='local'?`<b>AI reading is off on the office PC.</b> Names come from built-in rules until it is on.${S.localInfo?.aiNote?` <span class="muted">Reason: ${esc(S.localInfo.aiNote)}</span>`:''} <button class="btn sm" id="aiRecheck" type="button" style="margin-left:6px">${I('refresh')}Check again</button>`:'AI reading is not available in this view, so names come from rule-based detection of dates, gates and keywords. Review each one before saving.'}</span></div>`:''}
   <div class="card" id="uList" style="margin-top:16px"></div>`},
   soft(){updateNavMeta()},
   bind(v){const d=$('#drop',v),inp=$('#hiddenFile');inp.accept='.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.webp,.gif,.pptx,.odt,.ods';
@@ -1826,7 +1826,7 @@ GD.write=async(rows)=>{const values=[];for(const r of rows)values.push([Date.now
   await GD.json(`${GAPI.sheets}/${GD.sheet}/values/${encodeURIComponent('log!A:F')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({values})})};
 GD.applyRow=async(row)=>{const[,col,id,op,js]=row;if(!col||!id||!GD.db[col])return null;
   if(op==='d'){if(!GD.db[col][id])return null;delete GD.db[col][id];return{col,op:'delete',doc:{id}}}
-  const doc=await GD.decode(js);if(!doc)return null;GD.db[col][id]=doc;return{col,op:'upsert',doc:{...doc,id}}};
+  const doc=await GD.decode(js);if(!doc)return null;GD.db[col][id]=doc;if(col==='config'&&id==='ai'&&GD.on&&S.mode==='local'){try{LocalAPI.enableAI(GD.info())}catch(e){}}return{col,op:'upsert',doc:{...doc,id}}};
 GD.put=async(col,id,doc,silent)=>{GD.db[col][id]=doc;await GD.write([{col,id,op:'u',doc}]);if(!silent)GD.emit('change',{col,op:'upsert',doc:{...doc,id}})};
 GD.drop=async(col,id)=>{delete GD.db[col][id];await GD.write([{col,id,op:'d'}]);GD.emit('change',{col,op:'delete',doc:{id}})};
 GD.load=async()=>{const j=await GD.json(`${GAPI.sheets}/${GD.sheet}/values/${encodeURIComponent('log!A2:F')}?majorDimension=ROWS`);const rows=j.values||[];
@@ -1895,7 +1895,7 @@ const gdRes=(obj,status=200)=>new Response(JSON.stringify(obj),{status,headers:{
 async function gdBody(init){const b=init.body;if(b==null)return null;if(typeof b==='string')return b;if(b instanceof Blob)return b;if(b instanceof ArrayBuffer||ArrayBuffer.isView(b))return new Blob([b]);return b}
 async function gdJson(init){const b=await gdBody(init);if(!b)return{};const t=typeof b==='string'?b:await b.text();return t?JSON.parse(t):{}}
 const gdHeader=(init,k)=>{const h=init.headers||{};if(h instanceof Headers)return h.get(k);for(const x in h)if(x.toLowerCase()===k)return h[x];return null};
-GD.info=()=>({name:'File Org',passcodeRequired:false,aiEnabled:false,aiProvider:'off',aiModel:'',aiNote:'not available in the Google Drive version (the rule-based naming still reads Date, Branch, Subject and Location)',previewEnabled:true,port:0,shareName:'',lanUrls:[],remoteUrls:[location.origin],aiTextLimit:9000,dataDir:'Google Drive › File Org',host:'Google Drive',maxUploadMB:100,storage:'gdrive'});
+GD.info=()=>{const ai=GD.db.config.ai||{};return{name:'File Org',passcodeRequired:false,aiEnabled:!!(ai.key&&ai.model),aiProvider:ai.key?'gemini':'off',aiModel:ai.model||'',aiNote:'',previewEnabled:true,port:0,shareName:'',lanUrls:[],remoteUrls:[location.origin],aiTextLimit:9000,dataDir:'Google Drive › File Org',host:'Google Drive',maxUploadMB:100,storage:'gdrive'}};
 GD.state=()=>{const L=c=>Object.entries(GD.db[c]).map(([id,d])=>({...d,id}));
   return{files:L('files'),folders:L('folders'),messages:L('messages').sort((a,b)=>b.created-a.created).slice(0,500),activity:L('activity').sort((a,b)=>b.created-a.created).slice(0,300),profiles:{...GD.db.profiles},users:L('users'),config:GD.db.config.naming}};
 GD.act=(action,target,fileId)=>GD.put('activity',gdId(),{uid:S.me?.id||'system',action,target:target||'',fileId:fileId||null,created:Date.now()}).catch(()=>{});
@@ -1933,7 +1933,7 @@ GD.handle=async(url,init={})=>{const u=new URL(url,location.origin);const p=u.pa
   if(p==='/api/login'){return gdRes({user:{...GD.db.users[S.me.id],id:S.me.id}})}
   if(p==='/api/state')return gdRes(GD.state());
   if(p==='/api/typing'||p==='/api/events')return gdRes({ok:true});
-  if(p==='/api/ai')return gdRes({error:'AI is not available in the Google Drive version.'},501);
+  if(p==='/api/ai'){const b=await gdJson(init);return gdRes({text:await GD.gemini(b.prompt,b.image)})}
   if(p==='/api/scan')return gdRes(await GD.scan());
   if(p==='/api/signature'){const id=S.me.id;const f=(await GD.list(`'${GD.sysSub.signatures}' in parents and name='${gdQ(id)}.txt' and trashed=false`,'files(id)'))[0];
     if(method==='GET'){if(!f)return gdRes({png:null});return gdRes({png:await (await GD.download(f.id)).text()})}
@@ -1981,6 +1981,36 @@ GD.handle=async(url,init={})=>{const u=new URL(url,location.origin);const p=u.pa
   return gdRes({error:'Not found'},404);
   }catch(e){if(e instanceof TypeError)throw e;return gdRes({error:e.message||'Google Drive error'},e.status&&e.status>=400?e.status:500)}};
 
+/* ---------- free AI reading with Google Gemini (key kept in the company's private Sheet, never in the public site) ---------- */
+const GEM='https://generativelanguage.googleapis.com/v1beta';
+GD.pickModel=async key=>{const r=await GD.rf(`${GEM}/models?pageSize=200&key=${encodeURIComponent(key)}`);const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error?.message?'Google did not accept that key: '+j.error.message:'Google did not accept that key.');
+  const ok=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name.replace(/^models\//,''));
+  const pref=[x=>x==='gemini-flash-latest',x=>/flash-lite-latest$/.test(x),x=>/^gemini-[\d.]+-flash$/.test(x),x=>/^gemini-[\d.]+-flash-lite$/.test(x),x=>/flash/.test(x)&&!/image|tts|audio|live|exp|preview|thinking/.test(x),x=>/flash/.test(x)];
+  for(const t of pref){const hits=ok.filter(t).sort().reverse();if(hits.length)return hits[0]}
+  if(!ok.length)throw new Error('That key works, but no Gemini text models are available to it.');return ok[0]};
+GD.gemini=async(prompt,image)=>{const ai=GD.db.config.ai||{};if(!ai.key)throw gdErr(501,'AI is not set up.');
+  const parts=[{text:String(prompt).slice(0,30000)}];if(image&&image.b64)parts.push({inline_data:{mime_type:image.type||'image/jpeg',data:image.b64}});
+  const call=async model=>GD.rf(`${GEM}/models/${model}:generateContent?key=${encodeURIComponent(ai.key)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:'You read company documents and reply with one JSON object only.'}]},contents:[{role:'user',parts}],generationConfig:{temperature:0,responseMimeType:'application/json'}})});
+  let r=await call(ai.model);
+  if(r.status===404){try{const m=await GD.pickModel(ai.key);if(m!==ai.model){await GD.put('config','ai',{...ai,model:m});r=await call(m)}}catch(e){}}
+  const j=await r.json().catch(()=>({}));
+  if(r.status===429)throw gdErr(429,'The free Gemini limit for now is used up. Names come from the built-in rules; try AI again in a minute.');
+  if(!r.ok)throw gdErr(502,j.error?.message||'Gemini could not read this file.');
+  return(j.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('')};
+GD.aiSetup=async()=>{const cur=GD.db.config.ai||{};
+  const res=await modal({title:'Turn on free AI reading',body:`<p style="margin:0">File Org can use <b>Google Gemini</b> to read each report and fill in the name for you. Google gives a free allowance that is plenty for an office.</p>
+    <ol style="margin:0;padding-left:20px;color:var(--ink-2);display:flex;flex-direction:column;gap:4px"><li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> with the admin Google account.</li><li>Click <b>Create API key</b>, choose the <b>FileOrg</b> project.</li><li>Copy the key and paste it below.</li></ol>
+    <div class="field"><label for="gk-in">Gemini API key</label><input class="input" id="gk-in" autocomplete="off" spellcheck="false" placeholder="${cur.key?'A key is saved. Paste a new one to replace it':'Paste the key here'}"></div>
+    <p class="muted" style="margin:0;font-size:12.5px">The key is saved in File Org's private records in your Google Drive, never in the public website. Do not add billing to the project, so it can never charge you. On the free plan Google may use what is sent to improve its products, so turn this off if reports are confidential.</p>
+    <div id="gk-err" style="color:var(--bad);font-size:13px"></div>`,
+    actions:[...(cur.key?[{label:'Turn AI off',cls:'ghost',value:()=>'off'}]:[]),{label:'Cancel',cls:'ghost',value:()=>null},{label:'Save',cls:'primary',value:sc=>{const v=$('#gk-in',sc).value.trim();if(!v){$('#gk-err',sc).textContent='Paste the key first.';return false}return v}}]});
+  if(!res)return;
+  try{if(res==='off'){await GD.put('config','ai',{off:Date.now()});toast('AI reading is off')}
+    else{toast('Checking the key…');const model=await GD.pickModel(res);await GD.put('config','ai',{key:res,model,by:S.me.id,updated:Date.now()});toast('AI reading is on · '+model)}
+    LocalAPI.enableAI(GD.info());renderView()}catch(e){toast(e.message,true)}};
+document.addEventListener('click',e=>{if(e.target.closest('#gdAiSet')&&GD.on){e.preventDefault();e.stopImmediatePropagation();GD.aiSetup()}},true);
+
 /* ---------- switch the app over when config.js asks for Google Drive ---------- */
 if(GD.cfg&&GD.cfg.clientId){GD.on=true;window.FILEORG_LOCAL=true;
   window.fetch=function(input,init){const url=typeof input==='string'?input:input&&input.url||'';if(/^\/api\//.test(url))return GD.handle(url,init||{});return GD.rf(input,init)};
@@ -2004,7 +2034,8 @@ if(GD.cfg&&GD.cfg.clientId){GD.on=true;window.FILEORG_LOCAL=true;
   LocalAPI.blobUrl=f=>f._objUrl||'';
   const _open=openFile;openFile=async function(f,...a){if(f&&f.kind==='img'&&!f._objUrl){try{f._objUrl=URL.createObjectURL(await GD.download(f.id))}catch(e){toast(e.message,true);return}}return _open.call(this,f,...a)};
   downloadFile=async f=>{try{toast('Downloading '+f.name+'…');const b=await GD.download(f.id);const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=f.name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);logAct('downloaded',f.name,f.id)}catch(e){toast(e.message,true)}};
-  LocalAPI.recheckAI=async()=>GD.info();
+  LocalAPI.recheckAI=async()=>{const i=GD.info();LocalAPI.enableAI(i);return i};
+  const _en=LocalAPI.enableAI;LocalAPI.enableAI=info=>_en.call(LocalAPI,GD.sheet?GD.info():info);
 }
 </script>
 <script>
