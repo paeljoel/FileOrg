@@ -2693,7 +2693,7 @@ async function docxToHtml(buf){
   const stX=await xml('word/styles.xml');const styles={};let defP={},defR={},defPStyle=null,defTStyle=null;
   if(stX){const dd=stX.getElementsByTagName('w:docDefaults')[0];if(dd){defP=dxPPr(dd.getElementsByTagName('w:pPr')[0]);defR=dxRPr(dd.getElementsByTagName('w:rPr')[0])}
     for(const s of stX.getElementsByTagName('w:style')){const id=dxA(s,'styleId'),type=dxA(s,'type');const tp=dxC(s,'tblPr');
-      styles[id]={type,basedOn:dxA(dxC(s,'basedOn'),'val'),p:dxPPr(dxC(s,'pPr')),r:dxRPr(dxC(s,'rPr')),tbl:tp?{bdr:dxTblBorders(dxC(tp,'tblBorders'))}:null};
+      styles[id]={type,basedOn:dxA(dxC(s,'basedOn'),'val'),p:dxPPr(dxC(s,'pPr')),r:dxRPr(dxC(s,'rPr')),tbl:tp?{bdr:dxTblBorders(dxC(tp,'tblBorders'))}:null,el:type==='table'?s:null};
       if(dxA(s,'default')==='1'){if(type==='paragraph')defPStyle=id;if(type==='table')defTStyle=id}}}
   const chain=(id,seen=new Set())=>{const s=styles[id];if(!s||seen.has(id))return[];seen.add(id);return[...chain(s.basedOn,seen),s]};
   const sP=id=>dxMerge(...chain(id).map(s=>s.p)),sR=id=>dxMerge(...chain(id).map(s=>s.r));
@@ -2735,9 +2735,38 @@ async function docxToHtml(buf){
     if(r.color&&r.color!==base.color)st.push('color:'+r.color);if(r.hl)st.push('background:'+r.hl);if(r.caps)st.push('text-transform:uppercase');if(r.sc)st.push('font-variant:small-caps');
     if(r.va==='superscript')st.push('vertical-align:super;font-size:'+((r.sz||11)*.65).toFixed(1)+'pt');if(r.va==='subscript')st.push('vertical-align:sub;font-size:'+((r.sz||11)*.65).toFixed(1)+'pt');return st.join(';')};
 
+  /* SmartArt picture lists (photos with captions): Word keeps a ready-made drawing of them.
+     They come in as a neat photo grid with the caption under each photo, the same way they are arranged in Word. */
+  const kid=(e,n)=>e&&[...e.children].find(c=>c.localName===n);
+  const cropTo=async(src,f,bw,bh)=>{try{const im=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=src});
+      const L=f.l/1e5,T=f.t/1e5,R=f.r/1e5,B=f.b/1e5;const dw=bw*(1-L-R),dh=bh*(1-T-B);if(!(dw>0&&dh>0))return src;
+      const sx=Math.max(0,(-L*bw)/dw*im.naturalWidth),sy=Math.max(0,(-T*bh)/dh*im.naturalHeight),sw=Math.min(im.naturalWidth-sx,bw/dw*im.naturalWidth),sh=Math.min(im.naturalHeight-sy,bh/dh*im.naturalHeight);
+      if(Math.abs(sw-im.naturalWidth)<2&&Math.abs(sh-im.naturalHeight)<2)return src;
+      const k=Math.min(1,1400/Math.max(sw,sh));const c=document.createElement('canvas');c.width=Math.round(sw*k);c.height=Math.round(sh*k);c.getContext('2d').drawImage(im,sx,sy,sw,sh,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.88)}catch(e){return src}};
+  async function smartArt(d,ctx){const ri=d.getElementsByTagName('dgm:relIds')[0];const dm=ctx.rels[ri.getAttribute('r:dm')];if(!dm)return'';
+    let drawT=null;const dataX=await xml(dm.target);const ext=dataX&&[...dataX.getElementsByTagName('*')].find(e=>e.localName==='dataModelExt');
+    if(ext&&ctx.rels[ext.getAttribute('relId')])drawT=ctx.rels[ext.getAttribute('relId')].target;if(!drawT)drawT=dm.target.replace(/data(\d+)\.xml$/,'drawing$1.xml');
+    const dx=await xml(drawT);if(!dx)return'';const drels=await relsOf(drawT);
+    const pics=[],texts=[];
+    for(const sp of [...dx.getElementsByTagName('*')].filter(e=>e.localName==='sp')){const spPr=kid(sp,'spPr');const xf=kid(spPr,'xfrm');if(!xf)continue;const o=kid(xf,'off'),e=kid(xf,'ext');
+      const r={x:dxEmu(o?.getAttribute('x')),y:dxEmu(o?.getAttribute('y')),w:dxEmu(e?.getAttribute('cx')),h:dxEmu(e?.getAttribute('cy'))};
+      const bf=kid(spPr,'blipFill');const bl=bf&&kid(bf,'blip');
+      if(bl){let src=await imgSrc(drels,bl.getAttribute('r:embed'));if(!src)continue;const fr=bf.getElementsByTagName('a:fillRect')[0];
+        if(fr){const f={l:+fr.getAttribute('l')||0,t:+fr.getAttribute('t')||0,r:+fr.getAttribute('r')||0,b:+fr.getAttribute('b')||0};if(f.l||f.t||f.r||f.b)src=await cropTo(src,f,r.w,r.h)}pics.push({...r,src,cap:''});continue}
+      const t=[...sp.getElementsByTagName('a:p')].map(p=>[...p.getElementsByTagName('a:t')].map(x=>x.textContent).join('')).filter(Boolean).join(' ').trim();if(t)texts.push({...r,t})}
+    if(!pics.length&&!texts.length)return'';
+    for(const t of texts){const cx=t.x+t.w/2,cy=t.y+t.h/2;const p=pics.find(p=>cx>=p.x&&cx<=p.x+p.w&&cy>=p.y-4&&cy<=p.y+p.h+t.h);if(p&&!p.cap)p.cap=t.t;else t.free=true}
+    pics.sort((a,b)=>a.y-b.y||a.x-b.x);const rows=[];for(const p of pics){const r=rows.find(r=>Math.abs(r.y-p.y)<p.h*0.5);if(r)r.items.push(p);else rows.push({y:p.y,items:[p]})}
+    const F="font-family:Arial,'Liberation Sans',Helvetica,sans-serif";
+    let html=texts.filter(t=>t.free).map(t=>`<p style="margin:0 0 4pt;text-align:center;${F};font-size:9pt;font-weight:700">${esc(t.t)}</p>`).join('');
+    for(const r of rows){r.items.sort((a,b)=>a.x-b.x);
+      html+=`<table class="photo-grid"${pics.length===1?' data-sa1="1"':' data-sa="1"'} style="border-collapse:collapse;table-layout:fixed;margin:0 auto 6pt"><tr>${r.items.map((p,i)=>(i?'<td style="border:none;width:10px;padding:0"></td>':'')+`<td style="border:none;padding:0;width:${p.w}px;vertical-align:top"><img src="${p.src}" alt="${esc(p.cap)}" style="width:${p.w}px;height:${p.h}px;display:block"></td>`).join('')}</tr>`
+        +(r.items.some(p=>p.cap)?`<tr>${r.items.map((p,i)=>(i?'<td style="border:none;padding:0"></td>':'')+`<td style="border:none;padding:3px 0 6px;text-align:center;${F};font-size:8pt;font-weight:700;color:#3a4a5a">${esc(p.cap)||'&nbsp;'}</td>`).join('')}</tr>`:'')+'</table>'}
+    return html}
   /* drawings: inline/anchored pictures, lines, text boxes */
   async function drawing(el,ctx){let out='';
     for(const d of dxKids(el)){const anchor=d.localName==='anchor';if(d.localName!=='inline'&&!anchor)continue;
+      if(d.getElementsByTagName('dgm:relIds')[0]){const html=await smartArt(d,ctx);if(html){if(ctx.after)ctx.after.push(html);else out+=html}continue}
       const ext=dxC(d,'extent');const w=dxEmu(ext?.getAttribute('cx')),h=dxEmu(ext?.getAttribute('cy'));
       const blip=d.getElementsByTagName('a:blip')[0];const ph=dxC(d,'positionH'),pv=dxC(d,'positionV');
       const hAlign=dxC(ph,'align')?.textContent,hOff=dxEmu(dxC(ph,'posOffset')?.textContent),hRel=ph?.getAttribute('relativeFrom');
@@ -2794,7 +2823,7 @@ async function docxToHtml(buf){
     if(bf)st.push('font-family:'+dxFontCss(bf));st.push(`font-size:${base.sz||11}pt`);if(base.b)st.push('font-weight:700');if(base.i)st.push('font-style:italic');if(base.color)st.push('color:'+base.color);
     if(pp.shd)st.push('background:'+pp.shd);
     if(pp.bdr)for(const s of['top','bottom','left','right']){const b=pp.bdr[s]||pp.bdr[s==='left'?'start':s==='right'?'end':s];if(b&&b.css&&b.css!=='none'){st.push(`border-${s}:${b.css};padding-${s}:${b.space}pt`)}}
-    const c2={...ctx,indPx:Math.round((pp.indL||0)*4/3),indRPx:Math.round((pp.indR||0)*4/3),rel:false};
+    const c2={...ctx,indPx:Math.round((pp.indL||0)*4/3),indRPx:Math.round((pp.indR||0)*4/3),rel:false,after:[]};
     const acc={h:'',text:false};
     if(num&&num.t!==''){const mr=dxMerge(base,num.lv.r);const hang=pp.first<0?-pp.first:0;const mcss=runCss(mr,{...base,font:bf});
       acc.h+=`<span data-dx="num" style="display:inline-block;text-indent:0;min-width:${hang?hang+'pt':'auto'}${mcss?';'+mcss:''}">${esc(num.t)}${num.lv.suff==='space'?'&nbsp;':hang?'':'&nbsp;'}</span>`}
@@ -2804,7 +2833,7 @@ async function docxToHtml(buf){
     if(!acc.text&&!/<img|data-dx="line"/.test(acc.h)){acc.h+='<br>';if(markR.sz)st[st.findIndex(x=>x.startsWith('font-size'))]=`font-size:${markR.sz}pt`}
     ctx.prevStyle=sid;
     const tag=pp.style&&/^Heading([1-3])$/.test(pp.style)?'h'+pp.style.slice(-1):'p';
-    return`<${tag} style="${st.join(';')};tab-size:36pt;white-space:pre-wrap">${acc.h}</${tag}>`+(acc.pageBreak?'<hr class="pb">':'')}
+    return`<${tag} style="${st.join(';')};tab-size:36pt;white-space:pre-wrap">${acc.h}</${tag}>`+c2.after.join('')+(acc.pageBreak?'<hr class="pb">':'')}
 
   async function table(t,ctx){const tp=dxC(t,'tblPr');const tsid=dxA(dxC(tp,'tblStyle'),'val')||defTStyle;const tsc=chain(tsid);
     let bd={};for(const s of tsc)if(s.tbl?.bdr)bd={...bd,...s.tbl.bdr};const own=dxTblBorders(dxC(tp,'tblBorders'));if(own)bd={...bd,...own};
@@ -2812,6 +2841,16 @@ async function docxToHtml(buf){
     const grid=[...(dxC(t,'tblGrid')?.children||[])].map(g=>(+dxA(g,'w')||0)/20);const total=grid.reduce((a,b)=>a+b,0);
     const jc=dxA(dxC(tp,'jc'),'val');const tw=dxC(tp,'tblW');const ind=dxTw(dxA(dxC(tp,'tblInd'),'w'));
     const mar=dxC(tp,'tblCellMar');const cm=s=>{const e=dxC(mar,s)||dxC(mar,s==='left'?'start':s==='right'?'end':s);return e?dxTw(dxA(e,'w')):null};const padL=cm('left')??5.4,padR=cm('right')??5.4,padT=cm('top')??0,padB=cm('bottom')??0;
+    /* table style colours (header row, first column, banded rows), e.g. Word's "Grid Table 5 Dark" */
+    const look=dxC(tp,'tblLook');const lk=k=>{const v=look&&dxA(look,k);if(v!=null)return v==='1'||v==='true'||v==='on';const hv=parseInt((look&&dxA(look,'val'))||'04A0',16);return!!(hv&{firstRow:0x20,lastRow:0x40,firstColumn:0x80,lastColumn:0x100,noHBand:0x200,noVBand:0x400}[k])};
+    const cond={};for(const sx of tsc){if(!sx.el)continue;const f=dxA(dxC(dxC(sx.el,'tcPr'),'shd'),'fill');if(f&&f!=='auto')cond.whole={fill:f,r:{}};
+      for(const x of dxKids(sx.el).filter(e=>e.localName==='tblStylePr')){const f2=dxA(dxC(dxC(x,'tcPr'),'shd'),'fill');cond[dxA(x,'type')]={fill:f2&&f2!=='auto'?f2:null,r:dxRPr(dxC(x,'rPr'))}}}
+    const hasCond=Object.keys(cond).length>0;
+    const condOf=(ri,col,span,nR,nC)=>{if(!hasCond)return null;const fr=lk('firstRow'),lr=lk('lastRow'),fc=lk('firstColumn'),lc=lk('lastColumn');const ord=['whole'];
+      if(!lk('noVBand')){const c=col-(fc?1:0);if(c>=0)ord.push(c%2?'band2Vert':'band1Vert')}
+      if(!lk('noHBand')){const r=ri-(fr?1:0);if(r>=0)ord.push(r%2?'band2Horz':'band1Horz')}
+      if(fc&&col===0)ord.push('firstCol');if(lc&&col+span>=nC)ord.push('lastCol');if(lr&&ri===nR-1)ord.push('lastRow');if(fr&&ri===0)ord.push('firstRow');
+      let fill=null,r={};for(const k of ord){const c=cond[k];if(!c)continue;if(c.fill)fill=c.fill;r={...r,...c.r}}return{fill,r}};
     const rows=dxKids(t).filter(r=>r.localName==='tr');
     /* layout matrix for vMerge */
     const mat=rows.map(r=>{let col=0;return dxKids(r).filter(c=>c.localName==='tc'||c.localName==='sdt').map(c=>{if(c.localName==='sdt')c=dxC(dxC(c,'sdtContent'),'tc')||c;const pr=dxC(c,'tcPr');const span=+(dxA(dxC(pr,'gridSpan'),'val')||1);const vm=dxC(pr,'vMerge');const o={c,pr,col,span,vm:vm?(dxA(vm,'val')||'continue'):null};col+=span;return o})});
@@ -2822,8 +2861,8 @@ async function docxToHtml(buf){
         const lastCol=cell.col+cell.span>=grid.length,lastRow=ri+rs>=nR;const tb=dxTblBorders(dxC(cell.pr,'tcBorders'))||{};
         const side=(s,edge,inner)=>{const v=tb[s]??(edge?bd[s]:bd[inner]);return v&&v!=='none'?v:'none'};
         const st=[`border-top:${side('top',ri===0,'insideH')}`,`border-bottom:${side('bottom',lastRow,'insideH')}`,`border-left:${side('left',cell.col===0,'insideV')}`,`border-right:${side('right',lastCol,'insideV')}`,`padding:${padT}pt ${padR}pt ${padB}pt ${padL}pt`,'min-width:0'];
-        const shd=dxA(dxC(cell.pr,'shd'),'fill');if(shd&&shd!=='auto')st.push('background:#'+shd);const va=dxA(dxC(cell.pr,'vAlign'),'val');st.push('vertical-align:'+(va==='center'?'middle':va==='bottom'?'bottom':'top'));
-        h+=`<td${cell.span>1?` colspan="${cell.span}"`:''}${rs>1?` rowspan="${rs}"`:''} style="${st.join(';')}">${await blocks(cell.c,{...ctx,tblP,tblR,indPx:0})}</td>`}
+        const cf=condOf(ri,cell.col,cell.span,nR,grid.length);const shd=dxA(dxC(cell.pr,'shd'),'fill');if(shd&&shd!=='auto')st.push('background:#'+shd);else if(cf&&cf.fill)st.push('background:#'+cf.fill);const va=dxA(dxC(cell.pr,'vAlign'),'val');st.push('vertical-align:'+(va==='center'?'middle':va==='bottom'?'bottom':'top'));
+        h+=`<td${cell.span>1?` colspan="${cell.span}"`:''}${rs>1?` rowspan="${rs}"`:''} style="${st.join(';')}">${await blocks(cell.c,{...ctx,tblP,tblR:cf&&Object.keys(cf.r).length?dxMerge(tblR,cf.r):tblR,indPx:0})}</td>`}
       h+='</tr>'}
     return h+'</table>'}
 
@@ -2842,7 +2881,29 @@ async function docxToHtml(buf){
   if(head)html+=`<div data-dx="header" data-page='${JSON.stringify(pg)}' style="margin:${-(pg.mt-pg.hd)}px 0 0 0;min-height:${Math.max(0,pg.mt-pg.hd)}px;display:flow-root">${head}</div>`;
   html+=body;
   if(foot)html+=`<div data-dx="footer" style="margin-top:24px;display:flow-root">${foot}</div>`;
-  html=dxGroupBorders(html);DX.page=pg;return html||'<p><br></p>'}
+  html=dxPhotoGrids(dxGroupBorders(html));DX.page=pg;return html||'<p><br></p>'}
+/* SmartArt photos placed one by one side by side in Word become one tidy 2-column grid,
+   and a section title that Word draws above its photos stays above them */
+function dxPhotoGrids(html){if(!/data-sa/.test(html))return html;const t=document.createElement('template');t.innerHTML=html;const root=t.content;
+  const empty=e=>e&&e.tagName==='P'&&!e.textContent.replace(/\u00a0/g,'').trim()&&!e.querySelector('img,table');
+  const isTitle=e=>e&&e.tagName==='P'&&!e.querySelector('img');
+  const titleLike=e=>{if(!isTitle(e))return false;const x=e.textContent.trim();return x.length>2&&x.length<60&&x===x.toUpperCase()};
+  let kids=[...root.children];
+  for(let i=0;i<kids.length;i++){const k=kids[i];if(!(k.matches&&k.matches('table[data-sa1]')))continue;
+    const group=[k];let j=i+1;while(j<kids.length&&(empty(kids[j])||kids[j].matches?.('table[data-sa1]'))){if(kids[j].matches('table[data-sa1]'))group.push(kids[j]);j++}
+    if(group.length<2)continue;const F="font-family:Arial,'Liberation Sans',Helvetica,sans-serif";
+    const cells=group.map(g=>{const img=g.querySelector('img');const cap=g.rows[1]?g.rows[1].cells[0].textContent.trim():'';return{img,cap}});
+    const w=Math.max(...cells.map(c=>parseFloat(c.img.style.width)||200));
+    let h='';for(let a=0;a<cells.length;a+=2){const pair=cells.slice(a,a+2);
+      h+=`<table class="photo-grid" data-sa="1" style="border-collapse:collapse;table-layout:fixed;margin:0 auto 6pt"><tr>${pair.map((c,n)=>{const iw=parseFloat(c.img.style.width)||w,ih=parseFloat(c.img.style.height)||w*.8;const k2=w/iw;c.img.style.width=w+'px';c.img.style.height=Math.round(ih*k2)+'px';return(n?'<td style="border:none;width:10px;padding:0"></td>':'')+`<td style="border:none;padding:0;width:${w}px;vertical-align:top">${c.img.outerHTML}</td>`}).join('')}</tr>`
+        +`<tr>${pair.map((c,n)=>(n?'<td style="border:none;padding:0"></td>':'')+`<td style="border:none;padding:3px 0 6px;text-align:center;${F};font-size:8pt;font-weight:700;color:#3a4a5a">${esc(c.cap)||'&nbsp;'}</td>`).join('')}</tr></table>`}
+    const holder=document.createElement('template');holder.innerHTML=h;group[0].replaceWith(holder.content);group.slice(1).forEach(g=>g.remove());kids=[...root.children];}
+  kids=[...root.children];
+  for(let i=0;i<kids.length;i++){const k=kids[i];if(!(k.matches&&k.matches('table[data-sa],table[data-sa1]')))continue;
+    let p=i-1;while(p>=0&&empty(kids[p]))p--;if(p>=0&&titleLike(kids[p]))continue;if(p>=0&&kids[p].matches?.('table[data-sa],table[data-sa1]'))continue;
+    let n=i+1;while(n<kids.length&&(empty(kids[n])||kids[n].matches?.('table[data-sa],table[data-sa1]')))n++;
+    if(n<kids.length&&titleLike(kids[n])){k.before(kids[n]);kids=[...root.children]}}
+  const d=document.createElement('div');d.appendChild(root.cloneNode(true));return d.innerHTML}
 function dxGroupBorders(html){const t=document.createElement('template');t.innerHTML=html;const kids=[...t.content.children];
   const sig=el=>el&&el.tagName==='P'?['Top','Bottom','Left','Right'].map(s=>el.style['border'+s]).join('|')+'|'+el.style.marginLeft+'|'+el.style.marginRight:'';
   for(let i=1;i<kids.length;i++){const a=kids[i-1],b=kids[i];const sa=sig(a);if(!sa||sa.replace(/\|/g,'')===''||sa!==sig(b))continue;a.style.borderBottom='';a.style.paddingBottom='';b.style.borderTop='';b.style.paddingTop=''}
@@ -3501,9 +3562,11 @@ DW.build=async(html,opt={})=>{
       out+=await inline(c,blockEl)}
     return out};
   const pPr=(el,o={})=>{const cs=getComputedStyle(el);const a=[];if(o.style)a.push(`<w:pStyle w:val="${o.style}"/>`);if(o.num)a.push(`<w:numPr><w:ilvl w:val="${o.num.lvl}"/><w:numId w:val="${o.num.id}"/></w:numPr>`);
-    const b=['Top','Left','Bottom','Right'].map(s=>[s,DW.bdr(cs,s)]).filter(x=>x[1]);
+    /* a table cell's own borders and colour belong to the cell, not to the text inside it */
+    const cell=/^(TD|TH)$/.test(el.tagName);
+    const b=cell?[]:['Top','Left','Bottom','Right'].map(s=>[s,DW.bdr(cs,s)]).filter(x=>x[1]);
     if(b.length)a.push('<w:pBdr>'+b.map(([s,v])=>`<w:${s.toLowerCase()} w:val="${v.val}" w:sz="${v.sz}" w:space="${Math.max(0,Math.min(31,Math.round((parseFloat(cs['padding'+s])||0)*0.75)))}" w:color="${v.color}"/>`).join('')+'</w:pBdr>');
-    const bg=DW.hex(cs.backgroundColor);if(bg&&bg!=='FFFFFF')a.push(`<w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>`);
+    const bg=cell?null:DW.hex(cs.backgroundColor);if(bg&&bg!=='FFFFFF')a.push(`<w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>`);
     const fs=parseFloat(cs.fontSize)||14.67;const lh=parseFloat(cs.lineHeight);const before=TW(o.mt??(parseFloat(cs.marginTop)||0)),after=TW(o.mb??(parseFloat(cs.marginBottom)||0));
     a.push(`<w:spacing w:before="${Math.max(0,before)}" w:after="${Math.max(0,after)}" ${isNaN(lh)?'w:line="240" w:lineRule="auto"':`w:line="${Math.max(120,Math.round(lh/fs/1.15*240))}" w:lineRule="auto"`}/>`);
     const ml=(parseFloat(cs.marginLeft)||0)+(o.indAdd||0),mr=parseFloat(cs.marginRight)||0,ti=parseFloat(cs.textIndent)||0;
@@ -3799,7 +3862,7 @@ const RP={page:{w:816,h:1344,mt:96,mb:96,ml:72,mr:66,hd:48,ft:0}};
 RP.f="font-family:Arial,'Liberation Sans',Helvetica,sans-serif";
 RP.p=(html,extra='')=>`<p style="margin:0;line-height:1.322;${RP.f};font-size:10pt;${extra}">${html}</p>`;
 RP.gap=(pt=10)=>`<p style="margin:0;line-height:1.322;${RP.f};font-size:${pt}pt"><br></p>`;
-RP.header=()=>`<div data-dx="header" data-page='${JSON.stringify(RP.page)}' style="margin:-48px 0 0 0;min-height:48px;display:flow-root"><p style="margin:0 0 0.55pt 13.3pt;line-height:1.15;${RP.f};font-size:12pt"><img src="${DELTECH_LOGO_PNG}" alt="Deltech Parking Systems and Solutions Inc." style="width:221px;height:64px;float:left;margin:2px 12px 6px 0"></p><p style="margin:0;line-height:1.15;${RP.f};font-size:12pt"><span>	</span></p>${'<p style="margin:0;line-height:1.15;font-size:5pt"><br></p>'.repeat(4)}</div>`;
+RP.header=()=>`<div data-dx="header" data-page='${JSON.stringify(RP.page)}' style="margin:-48px 0 0 0;min-height:48px;display:flow-root"><p style="margin:0 0 0 13.3pt;line-height:1;${RP.f};font-size:12pt"><img src="${DELTECH_LOGO_PNG}" alt="Deltech Parking Systems and Solutions Inc." style="width:221px;height:64px;vertical-align:top"></p>${'<p style="margin:0;line-height:1.15;font-size:5pt"><br></p>'.repeat(4)}</div>`;
 RP.head=(title,site,subject,location)=>{const n=normSite(site);
   return RP.header()+`<h1 style="margin:0;text-align:center;line-height:1.322;${RP.f};font-size:18pt;font-weight:700">${esc(title)}</h1>`+RP.gap(11)+RP.gap(9)
     +RP.p('Date of Service: '+usDate())+RP.p('Company: '+esc(SITE_COMPANY[n]||''))+RP.p('Branch: '+esc(SITE_BRANCH[n]||(site||'').toUpperCase()))
@@ -3812,6 +3875,45 @@ RP.sign=()=>RP.gap(10)+`<table style="width:100%;border-collapse:collapse;table-
 <tr><td style="${RP.cell};height:22px"><div style="border-bottom:1px solid #1F4E79;margin:0 18px;padding-bottom:2px">${esc(S.me?.name||'')}</div></td><td style="${RP.cell}"><div style="border-bottom:1px solid #1F4E79;margin:0 18px;padding-bottom:2px">&nbsp;</div></td></tr>
 <tr><td style="${RP.cell};padding-top:6px;font-style:italic">Signature over Printed Name<br>(Technical Support)</td><td style="${RP.cell};padding-top:6px;font-style:italic">Signature over Printed Name<br>(Admin Officer)</td></tr></table>`;
 RP.table=(head,rows)=>`<table style="width:100%;border-collapse:collapse;margin:3pt 0 8pt"><tr>${head.map(h=>`<td style="border:1px solid #000;padding:2px 5px;${RP.f};font-size:8.5pt;font-weight:700">${h}</td>`).join('')}</tr>${rows.map(r=>`<tr>${r.map(c=>typeof c==='object'?`<td colspan="${c.span}" style="border:1px solid #000;padding:2px 5px;${RP.f};font-size:8.5pt;text-align:center">${c.t}</td>`:`<td style="border:1px solid #000;padding:2px 5px;${RP.f};font-size:8.5pt">${c||'&nbsp;'}</td>`).join('')}</tr>`).join('')}</table>`;
+/* ---- PMS report with findings tables and before/after photo pages (same layout as the company's PMS report) ---- */
+RP.BLUE='#4F81BD';RP.LB='#95B3D7';
+RP.pb=()=>'<hr class="pb" style="border:0;margin:0;height:0;break-after:page">';
+RP.h=(t,extra='')=>RP.p(`<b>${t}</b>`,extra);
+RP.task=(n,title,items)=>RP.gap(9)+RP.p(`<b>${n}. ${title}</b>`,'font-size:11pt')+`<ul style="margin:0;padding-left:44pt;line-height:1.25;${RP.f};font-size:11pt">${items.map(i=>`<li>${i}</li>`).join('')}</ul>`;
+RP.ftable=(title,last,rows)=>{const c=(t,bg,col,extra='')=>`<td style="border:1px solid #fff;padding:3px 6px 8px;background:${bg};color:${col};vertical-align:top;${RP.f};font-size:9pt;line-height:1.25;${extra}">${t||'&nbsp;'}</td>`;
+  const head=['Location','Equipment / Concern','Findings',last].map((h,i)=>c(`<b>${h}</b>`,RP.BLUE,'#fff',i===0||i===2?'text-align:center':'text-align:center')).join('');
+  return RP.gap(10)+RP.p(`<b>${title}</b>`,'font-size:8pt')+`<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0"><colgroup><col style="width:17%"><col style="width:19%"><col style="width:27%"><col style="width:26%"></colgroup><tr style="height:30px">${head}</tr>`
+    +rows.map((r,i)=>{const bg=i%2?'#DBE5F1':'#B8CCE4';return`<tr style="height:26px">${c(r[0],RP.BLUE,'#fff','text-align:center')}${c(r[1],bg,'#000')}${c(r[2],bg,'#000')}${c(r[3],bg,'#000')}</tr>`}).join('')+'</table>'};
+RP.btitle=t=>t?RP.p(`<b>${t}</b>`,`text-align:center;color:${RP.LB};font-size:11pt;margin-top:16pt`):RP.gap(12);
+RP.ph=(h,cap)=>`<td data-ph="1" style="background:#F3F6F4;border-radius:6px;height:${h}px;padding:4px;text-align:center;vertical-align:middle;color:#8a9792;${RP.f};font-size:8.5pt">${cap||'Insert photo here'}</td>`;
+RP.bgrid=(title,caps,rows,h)=>{const sp=`<td style="border:none;width:4%"></td>`;
+  return RP.btitle(title)+`<table class="photo-grid" style="width:100%;border-collapse:collapse;table-layout:fixed;margin:2pt 0 0"><colgroup><col style="width:48%"><col style="width:4%"><col style="width:48%"></colgroup>`
+    +(caps?`<tr>${caps.map((t,i)=>(i?sp:'')+`<td style="border:none;padding:6px 0 3px;text-align:center;color:${RP.LB};${RP.f};font-size:10pt;font-weight:700">${t}</td>`).join('')}</tr>`:'')
+    +Array.from({length:rows},(_,k)=>`<tr>${RP.ph(h)}${sp}${RP.ph(h)}</tr>`+(k<rows-1?`<tr><td colspan="3" style="border:none;height:10px"></td></tr>`:'')).join('')+'</table>'};
+RP.cgrid=(title,n,h)=>{const sp=`<td style="border:none;width:4%"></td>`;const cap=`<td style="border:none;padding:3px 0 8px;text-align:center;${RP.f};font-size:8pt;font-weight:700;color:#3a4a5a">PHOTO CAPTION</td>`;
+  let rows='';for(let k=0;k<n;k+=2)rows+=`<tr>${RP.ph(h)}${sp}${RP.ph(h)}</tr><tr>${cap}${sp}${cap}</tr>`;
+  return RP.btitle(title)+`<table class="photo-grid" style="width:78%;margin:6pt auto 0;border-collapse:collapse;table-layout:fixed"><colgroup><col style="width:48%"><col style="width:4%"><col style="width:48%"></colgroup>${rows}</table>`};
+RP.signx=()=>RP.gap(10)+`<table style="width:100%;border-collapse:collapse;table-layout:fixed"><tr><td style="border:none;padding:0 0 26pt;${RP.f};font-size:10pt;font-weight:700">PREPARED BY:</td><td style="border:none;padding:0 0 26pt;${RP.f};font-size:10pt;font-weight:700">NOTED BY:</td></tr>
+<tr><td style="${RP.cell}"><div style="border-bottom:1px solid #1F4E79;margin:0 34px;padding-bottom:2px">${esc(S.me?.name||'')}</div></td><td style="${RP.cell}"><div style="border-bottom:1px solid #1F4E79;margin:0 34px;padding-bottom:2px">&nbsp;</div></td></tr>
+<tr><td style="${RP.cell};padding-top:6px;font-style:italic">Signature over Printed Name<br>(Technical Support)</td><td style="${RP.cell};padding-top:6px;font-style:italic">Signature over Printed Name<br>(Admin Officer)</td></tr></table>`;
+RP.pmsx=site=>RP.head('TECHNICAL REPORT',site,'PREVENTIVE MAINTENANCE SCHEDULE','TOWER 2, TOWER 3 PARKING AREA')
+  +RP.gap(6)+RP.p('<b>PARKING MANAGEMENT SYSTEM<br>PREVENTIVE MAINTENANCE TASKS COMPLETED</b>','font-size:11pt')
+  +RP.task(1,'Entry Kiosk',['Inspected the kiosk enclosure, system unit, display, wave buttons, card dispenser, and other peripherals.','Inspected the vehicle detector controller and loop coil.','Cleaned the kiosk, card dispenser sensors, and other peripherals, and tested their functionality.'])
+  +RP.task(2,'Parking Barrier Gate',['Inspected the barrier arm, boom cover, and mounting bolts.','Tested the barrier opening and closing operations.','Inspected the motor, spring mechanism, and limit switches.','Tested the loop detector and IR/photocell anti-hit safety sensors.'])
+  +RP.task(3,'VIP / GP Card Reader',['Cleaned the VIP/GP card reader surfaces and inspected wiring connections.','Tested card detection and access validation.','Verified communication with the Parking Management System.'])
+  +RP.task(4,'Point-of-Sale (POS) System',['Cleaned the POS unit and peripherals, and tested their functionality.','Checked LAN connections and communication with the entry and exit kiosks.','Performed database backup and database shrink maintenance.'])
+  +RP.task(5,'Back Office PC',['Inspected and cleaned the Back Office PC and its components.','Tested the functionality of the PC and connected peripherals.','Tested the Back Office System to verify proper operation.'])
+  +RP.task(6,'Network Infrastructure',['Inspected and cleaned the network data cabinet.','Checked network cables, LAN connections, and equipment connections.','Inspected the network switch, UPS (Uninterruptible Power Supply), media converter, and exhaust fan.','Tested the functionality of network devices and connected peripherals.'])
+  +RP.pb()+RP.gap(10)+RP.h('Findings and Recommendations','font-size:9pt')
+  +RP.ftable('A. TOWER 2 — ENTRANCE AND EXIT','Recommended Action',[['Tower 2 – Entrance','GP60 Card Reader','',''],['Tower 2 – Entrance','Wave Button','',''],['Tower 2 – Entrance','Entrance Loop Coil','',''],['Tower 2 – Entrance','Barrier Loop Coil','',''],['Tower 2 – Exit','Barrier Mechanism','',''],['Tower 2 – Exit','UPS','','']])
+  +RP.ftable('B. TOWER 3 — ENTRANCE AND EXIT','Recommended Action',[['Tower 3 – Entrance','GP60 Card Reader','',''],['Tower 3 – Exit Booth','UPS','',''],['Tower 3 – Exit Booth','Barrier Arm','','']])
+  +RP.ftable('C. NETWORK INFRASTRUCTURE','Recommended Action / Status',[['Network Infrastructure','Media Converter','',''],['Tower 3 Data Cabinet','UPS','',''],['Tower 3 Data Cabinet','Exhaust Fan','','']])
+  +RP.ftable('D. BACK OFFICE — POWER BACKUP','Recommended Action',[['Back Office','UPS – 650VA','','']])
+  +RP.pb()+RP.bgrid('TOWER 3 ENTRANCE &amp; EXIT',['BEFORE','AFTER'],1,330)+RP.bgrid('',null,1,230)
+  +RP.pb()+RP.bgrid('TOWER 2 ENTRANCE &amp; EXIT',['BEFORE','AFTER'],1,250)+RP.bgrid('',null,1,170)+RP.bgrid('TOWER 2 &amp; 3 CARD DISPENSER',['Tower 2','Tower 3'],1,230)
+  +RP.pb()+RP.bgrid('TOWER 3 NETWORK CABINET',['BEFORE','AFTER'],1,160)+RP.bgrid('TOWER 2 NETWORK CABINET',['BEFORE','AFTER'],1,160)+RP.bgrid('BACKOFFICE PC',['BEFORE','AFTER'],1,200)
+  +RP.pb()+RP.cgrid('TOWER 2 LOOP',4,170)
+  +RP.pb()+RP.cgrid('TOWER 3 VISUAL PICTURES',4,110)+RP.cgrid('TOWER 2 VISUAL PICTURES',4,140)+RP.signx();
 Object.assign(TEMPLATES,{
   tr:{label:'Technical Report',cat:'TR',html:site=>RP.head('TECHNICAL REPORT',site,'','')+RP.label('Causes:')+RP.list([''])+RP.label('Action Taken:')+RP.list([''])+RP.gap(6)
     +RP.p('<b>Please see the Attached Pictures</b>','text-align:center;font-size:11pt')+RP.photos('')+RP.gap(8)+RP.p('<b>Status:</b> ')+RP.p('<b>Recommendation:</b> ')+RP.sign()},
@@ -3827,6 +3929,7 @@ Object.assign(TEMPLATES,{
   pms:{label:'Preventive Maintenance (PMS)',cat:'PMS',html:site=>RP.head('TECHNICAL REPORT',site,'PREVENTIVE MAINTENANCE','PARKING AREA, TERMINAL')+RP.p('TASK DONE:')
     +RP.list(['Cleaning of kiosk and booth','To remove dust from the kiosk, we used a <b>Blower</b>, a <b>Brush</b>, and circular <b>Towels</b>.','Clean printer head using <b>Cotton Balls</b> and <b>Isopropyl Alcohol.</b>','Testing the parking system after cleaning, (<b>POS</b>, <b>Kiosk</b> &amp; <b>Barrier</b>).'])
     +RP.gap(6)+RP.p('<b>Status:</b> Complete')+RP.photos('GATE 1')+RP.photos('GATE 2')+RP.sign()},
+  pmsx:{label:'PMS Report with Findings and Photos',cat:'PMS',html:site=>RP.pmsx(site)},
   memo:{label:'Memo',html:()=>RP.header()+`<h1 style="margin:0;text-align:center;line-height:1.322;${RP.f};font-size:18pt;font-weight:700">MEMORANDUM</h1>`+RP.gap(11)
     +RP.p('To: All staff')+RP.p('From: '+esc(S.me?.name||''))+RP.p('Date: '+usDate())+RP.p('Subject: ','border-bottom:1.5pt solid #000;padding-bottom:1pt')+RP.gap(10)+RP.p('&nbsp;')}
 });
@@ -3837,11 +3940,13 @@ RP.applyPage=()=>{const p=$('#paper');if(!p)return;const h=p.querySelector('[dat
 </script>
 <script>
 /* tap an "Insert photo here" box to fill it with a photo */
-RP.fit=async file=>{const url=await new Promise((r,j)=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.onerror=j;fr.readAsDataURL(file)});const im=await loadImg(url);const max=1600;const k=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));
-  const c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*k);c.height=Math.round(im.naturalHeight*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.85)};
+RP.fit=async(file,aspect)=>{const url=await new Promise((r,j)=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.onerror=j;fr.readAsDataURL(file)});const im=await loadImg(url);
+  /* fill the photo box like the company report: crop from the centre to the box's shape */
+  let sx=0,sy=0,sw=im.naturalWidth,sh=im.naturalHeight;if(aspect>0){if(sw/sh>aspect){const w=sh*aspect;sx=(sw-w)/2;sw=w}else{const h=sw/aspect;sy=(sh-h)/2;sh=h}}
+  const max=1600;const k=Math.min(1,max/Math.max(sw,sh));const c=document.createElement('canvas');c.width=Math.round(sw*k);c.height=Math.round(sh*k);c.getContext('2d').drawImage(im,sx,sy,sw,sh,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.85)};
 document.addEventListener('click',e=>{const td=e.target.closest&&e.target.closest('#paper td[data-ph]');if(!td||td.querySelector('img'))return;e.preventDefault();
-  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=async()=>{const f=inp.files[0];if(!f)return;try{const src=await RP.fit(f);
-    td.style.background='none';td.style.height='auto';td.innerHTML=`<img src="${src}" alt="${esc(f.name.replace(/\.[^.]+$/,''))}" style="width:100%;height:auto;display:block">`;$('#paper').dispatchEvent(new Event('input'));toast('Photo added')}catch(err){toast('Could not read that photo.',true)}};inp.click()});
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=async()=>{const f=inp.files[0];if(!f)return;try{const rb=td.getBoundingClientRect();const src=await RP.fit(f,rb.height>20?rb.width/rb.height:0);
+    td.style.background='none';td.style.height='auto';td.style.padding='0';td.innerHTML=`<img src="${src}" alt="${esc(f.name.replace(/\.[^.]+$/,''))}" style="width:100%;height:auto;display:block">`;$('#paper').dispatchEvent(new Event('input'));toast('Photo added')}catch(err){toast('Could not read that photo.',true)}};inp.click()});
 </script>
 <style>
 /* ================= Save as PDF ================= */
@@ -3982,6 +4087,35 @@ async function fileToPdf(f){const ext=String(f.ext||'').toLowerCase();
   catch(e){toast(e.message,true)}}
 {const _fm=fileMenu;fileMenu=function(f,x,y){const _om=openMenu;openMenu=function(x2,y2,items){openMenu=_om;if(PDFS.can()&&OFFICE_EXT.includes(String(f.ext||'').toLowerCase())){const i=items.findIndex(it=>it&&it.label==='Download');items.splice(i<0?items.length-2:i,0,{label:'Save as PDF',icon:'pdf',run:()=>fileToPdf(f)})}return _om(x2,y2,items)};try{return _fm.apply(this,arguments)}finally{openMenu=_om}}}
 new MutationObserver(()=>{const ex=document.getElementById('wSave')||document.getElementById('wExport');if(ex&&!document.getElementById('wPdf')){ex.insertAdjacentHTML('afterend',`<button class="btn sm" type="button" id="wPdf">${I('pdf')}Save as PDF</button>`);document.getElementById('wPdf').onclick=saveAsPdf}}).observe(document.body,{childList:true,subtree:true});
+
+/* ================= Share to Viber, Messenger, Facebook and other apps =================
+   Chat apps show Word files with their own simple viewers, which move pictures and lines around.
+   A PDF looks exactly the same on every phone, so PDF is the default. */
+const SHR={icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>'};
+SHR.can=file=>{try{return !!(navigator.canShare&&navigator.canShare({files:[file]}))}catch(e){return false}};
+SHR.ready=async(blob,name,type)=>{const file=new File([blob],name,{type:type||blob.type||'application/octet-stream'});const can=SHR.can(file);
+  const kb=blob.size>1048576?(blob.size/1048576).toFixed(1)+' MB':Math.max(1,Math.round(blob.size/1024))+' KB';
+  const r=await modal({title:'Ready to share',body:`<div style="display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px 14px"><span style="flex:none;width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)">${I(/pdf/.test(file.type)?'pdf':'doc')}</span><div style="min-width:0"><b style="display:block;font-size:13.5px;overflow-wrap:anywhere">${esc(name)}</b><span class="muted" style="font-size:12.5px">${kb}</span></div></div>
+    ${can?'<p class="muted" style="margin:10px 0 0;font-size:12.5px">Choose Viber, Messenger, Facebook, email or any app on the next screen.</p>':'<p class="muted" style="margin:10px 0 0;font-size:12.5px">This browser cannot send files straight to apps. Download it, then attach it in Viber, Messenger or Facebook.</p>'}`,
+    actions:[{label:'Download',cls:'ghost',value:()=>'dl'},...(can?[{label:'Share…',cls:'primary',value:()=>'share'}]:[])]});
+  if(r==='dl'){await saveDownload(name,blob);return}
+  if(r==='share'){try{await navigator.share({files:[file],title:name.replace(/\.[^.]+$/,'')});logAct&&logAct('shared',name,W.fileId||'')}catch(e){if(e.name!=='AbortError')toast('Could not open the share menu. Download the file instead.',true,{action:{label:'Download',run:()=>saveDownload(name,blob)}})}}};
+async function shareDoc(){const paper=$('#paper');if(!paper)return;const base=($('#edName-doc')?.value||'document').replace(/\.\w+$/,'')||'document';
+  const res=await modal({title:'Share',body:`<p class="muted" style="margin:0 0 4px;font-size:13px;overflow-wrap:anywhere">${esc(base)}</p><div class="pdf-opts" role="radiogroup">
+    <label><input type="radio" name="shf" value="pdf" checked><div><b>PDF (recommended)</b><span>Looks exactly the same in Viber, Messenger, Facebook and on every phone.</span></div></label>
+    <label><input type="radio" name="shf" value="docx"><div><b>Word file (.docx)</b><span>For people who will edit it in Microsoft Word. Chat apps may show it with a different layout.</span></div></label></div>`,
+    actions:[{label:'Cancel',cls:'ghost',value:()=>null},{label:'Continue',cls:'primary',value:sc=>(sc.querySelector('input[name="shf"]:checked')||{}).value||'pdf'}]});
+  if(!res)return;const tb=toast(res==='pdf'?'Making the PDF…':'Making the Word file…');
+  try{if(res==='pdf'){const pdf=await PX.make(paper,base);tb?.close();await SHR.ready(pdf,base+'.pdf','application/pdf')}
+    else{const {blob,name}=await docExport(paper.innerHTML,base);tb?.close();await SHR.ready(blob,name,'application/vnd.openxmlformats-officedocument.wordprocessingml.document')}}
+  catch(e){console.error(e);toast('Could not prepare the file. '+(e.message||''),true)}}
+async function shareFile(f){const ext=String(f.ext||'').toLowerCase();
+  if(['doc','docx','rtf','odt'].includes(ext)&&EDITORS.word){openFile(f);for(let i=0;i<60;i++){await new Promise(r=>setTimeout(r,150));if(W.fileId===f.id&&$('#paper')?.innerHTML.trim()&&$('#wShareApp'))break}
+    if(W.fileId===f.id){await new Promise(r=>setTimeout(r,400));return shareDoc()}}
+  const tb=toast('Preparing the file…');
+  try{const r=await fetch(S.mode==='local'?LocalAPI.blobUrl(f):'/api/blob/'+f.id);if(!r.ok)throw new Error('Could not read the file.');const bl=await r.blob();tb?.close();await SHR.ready(bl,f.name,f.mime)}catch(e){toast(e.message,true)}}
+{const _fm=fileMenu;fileMenu=function(f,x,y){const _om=openMenu;openMenu=function(x2,y2,items){openMenu=_om;if(!f.trashed&&(S.mode==='local'||['doc','docx'].includes(String(f.ext||'').toLowerCase()))){const i=items.findIndex(it=>it&&it.label==='Download');items.splice(i<0?items.length-2:i+1,0,{label:'Share to apps',icon:'send',run:()=>shareFile(f)})}return _om(x2,y2,items)};try{return _fm.apply(this,arguments)}finally{openMenu=_om}}}
+new MutationObserver(()=>{const pdf=document.getElementById('wPdf');if(pdf&&!document.getElementById('wShareApp')){pdf.insertAdjacentHTML('afterend',`<button class="btn sm" type="button" id="wShareApp" title="Share to Viber, Messenger, Facebook…">${SHR.icon}Share to apps</button>`);document.getElementById('wShareApp').onclick=shareDoc}}).observe(document.body,{childList:true,subtree:true});
 </script>
 <style>
 /* ================= picture frame: resize corners + move grip (computer and phone) ================= */
