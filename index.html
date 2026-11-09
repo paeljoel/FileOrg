@@ -4251,18 +4251,24 @@ XM.apply=(cell,v)=>{const s={...(cell.s||{})};delete s.c;delete s.b;delete s.bg;
 XM.setSel=v=>{const ed=EDITORS.excel;const sh=shX();ed.snap();const r0=Math.min(X.sel.r,X.sel.r2),r1=Math.max(X.sel.r,X.sel.r2),c0=Math.min(X.sel.c,X.sel.c2),c1=Math.max(X.sel.c,X.sel.c2);
   for(let r=r0;r<=r1;r++)for(let c=c0;c<=c1;c++){const k=refKey(c,r);const cell=sh.cells[k]||(sh.cells[k]={v:''});XM.apply(cell,v)}ed.render()};
 /* Open / Closed for a whole entrance or exit column */
-XM.toggleClosed=()=>{const sh=shX();const ed=EDITORS.excel;const c0=Math.min(X.sel.c,X.sel.c2),c1=Math.max(X.sel.c,X.sel.c2);let done=0;ed.snap();
-  for(let c=c0;c<=c1;c++){const marks=Object.keys(sh.cells).map(k=>({k,p:parseRef(k)})).filter(o=>o.p.c===c&&sh.cells[o.k].s?.mk);if(!marks.length)continue;
-    const hr=Math.min(...marks.map(o=>o.p.r))-1;if(hr<0)continue;const hk=refKey(c,hr);const head=sh.cells[hk]||(sh.cells[hk]={v:'',s:{}});const txt=String(head.v||'');const closed=/\nCLOSED$/i.test(txt)||/\bCLOSED$/i.test(txt);
-    const hs={...(head.s||{})};
-    if(closed){head.v=txt.replace(/\s*CLOSED$/i,'');hs.c='#40516D';hs.bg='#EAF2FF';marks.forEach(o=>{if(sh.cells[o.k].v==='N/A')XM.apply(sh.cells[o.k],'')})}
-    else{head.v=txt+'\nCLOSED';hs.c='#B42318';hs.bg='#FFF1F1';hs.wrap=1;marks.forEach(o=>XM.apply(sh.cells[o.k],'N/A'))}
+/* Open / Closed for a whole entrance or exit column — works on new checklists and on opened Excel files */
+XM.legendRows=sh=>new Set(Object.entries(sh.cells).filter(([k,c])=>/ = /.test(String(c.v||''))).map(([k])=>parseRef(k).r));
+XM.itemRows=(sh,hr)=>{const rows=[];for(let r=hr+1;r<hr+400;r++){const a=sh.cells[refKey(0,r)],b=sh.cells[refKey(2,r)];const has=x=>x&&String(x.v??'').trim()!=='';if(!has(a)&&!has(b))break;rows.push(r)}return rows};
+XM.headRow=(sh,c)=>{const leg=XM.legendRows(sh);let best=-1;Object.entries(sh.cells).forEach(([k,cell])=>{const p=parseRef(k);if(p.c!==c||leg.has(p.r))return;if(/entrance|exit|terminal|booth|gate|lane|kiosk/i.test(String(cell.v||''))&&(best<0||p.r<best)){
+    const below=sh.cells[refKey(0,p.r+1)];if(below&&String(below.v??'').trim()!=='')best=p.r}});return best};
+XM.toggleClosed=()=>{const sh=shX();const ed=EDITORS.excel;const c0=Math.min(X.sel.c,X.sel.c2),c1=Math.max(X.sel.c,X.sel.c2);let done=0,state='';ed.snap();
+  for(let c=c0;c<=c1;c++){const hr=XM.headRow(sh,c);if(hr<0)continue;const rows=XM.itemRows(sh,hr);if(!rows.length)continue;
+    const hk=refKey(c,hr);const head=sh.cells[hk];const txt=String(head.v||'');const closed=/CLOSED\s*$/i.test(txt);const hs={...(head.s||{})};
+    if(closed){head.v=txt.replace(/\s*CLOSED\s*$/i,'');hs.c='#40516D';hs.bg='#EAF2FF';rows.forEach(r=>{const k=refKey(c,r);const cell=sh.cells[k]||(sh.cells[k]={v:''});if(cell.v==='N/A')XM.apply(cell,'');else{cell.s={...(cell.s||{}),mk:1}}});state='open'}
+    else{head.v=txt+'\nCLOSED';hs.c='#B42318';hs.bg='#FFF1F1';hs.wrap=1;rows.forEach(r=>{const k=refKey(c,r);XM.apply(sh.cells[k]||(sh.cells[k]={v:''}),'N/A')});state='closed';
+      sh.rowH=sh.rowH||{};if((sh.rowH[hr]||24)<36)sh.rowH[hr]=36}
     head.s=hs;done++}
-  if(!done){X.undo.pop();toast('Select a cell in an entrance or exit column first.');return}ed.render();toast(done>1?'Columns updated':'Column updated')};
-XM.isMark=cell=>!!(cell&&cell.s?.mk);
+  if(!done){X.undo.pop();toast('Tap any cell under an entrance or exit (for example under “Gate 3 Entrance”), then tap Open / Closed.');return}
+  ed.render();toast(state==='closed'?(done>1?'Marked as CLOSED':'Marked as CLOSED · all N/A'):(done>1?'Opened again':'Opened again · ready for marks'))};
+XM.isMark=cell=>!!(cell&&(cell.s?.mk||(String(cell.v||'') in XMARK&&cell.s?.al==='center')));
 /* tap a mark cell that is already selected to change its mark: blank → ✓ → X → ☐ → N/A → blank */
 document.addEventListener('pointerdown',e=>{const td=e.target.closest&&e.target.closest('#sheet td[data-k]');if(!td||e.button>0||X.editing||e.shiftKey)return;const k=td.dataset.k;
-  const single=X.sel&&X.sel.c===X.sel.c2&&X.sel.r===X.sel.r2&&refKey(X.sel.c,X.sel.r)===k;const cell=shX().cells[k];if(!single||!XM.isMark(cell))return;
+  const single=X.sel&&X.sel.c===X.sel.c2&&X.sel.r===X.sel.r2&&refKey(X.sel.c,X.sel.r)===k;const cell=shX().cells[k];if(!single||!XM.isMark(cell)||XM.legendRows(shX()).has(parseRef(k).r))return;
   const i=XMARK_ORDER.indexOf(String(cell.v||''));EDITORS.excel.snap();XM.apply(cell,XMARK_ORDER[(i+1)%XMARK_ORDER.length]);XM.cycled=Date.now();setTimeout(()=>EDITORS.excel.render(),0)},true);
 document.addEventListener('dblclick',e=>{if(Date.now()-(XM.cycled||0)<600&&e.target.closest&&e.target.closest('#sheet')){e.stopPropagation();e.preventDefault()}},true);
 
