@@ -1575,6 +1575,8 @@ EDITORS.excel={
       const css=(st.b?'font-weight:700;':'')+(st.i?'font-style:italic;':'')+(deco?`text-decoration:${deco};`:'')+(st.c?`color:${st.c};`:'')+(st.bg?`background:${st.bg};`:'')+(st.al?`text-align:${st.al};`:'')+(st.va?`vertical-align:${st.va};`:'')+(st.fs?`font-size:${st.fs}pt;`:'')+(st.ff?`font-family:'${String(st.ff).replace(/'/g,'')}',var(--f-body);`:'')+bdShadow(st.bd);
       h+=`<td data-k="${k}" data-c="${c}" data-r="${r}"${span?` colspan="${span.cs}" rowspan="${span.rs}"`:''} class="${cls.join(' ')}" style="${css}">${esc(fmtCell(v,st))}</td>`}h+='</tr>'}
     $('#sheet').innerHTML=h+'</tbody>';
+    /* columns keep the widths set in the file, like Excel, instead of squeezing to the screen */
+    $('#sheet').style.width=(46+Array.from({length:maxC},(_,c)=>sh.colW?.[c]||dw).reduce((a,b)=>a+b,0))+'px';
     $('#xTabs').innerHTML=X.book.map((b,i)=>`<button class="t ${i===X.si?'on':''}" data-si="${i}">${esc(b.name)}</button>`).join('')+`<button class="btn sm icon ghost" id="xAddSheet" aria-label="Add sheet">${I('plus')}</button>`;
     this.syncBar();
   },
@@ -1693,11 +1695,13 @@ async function xlsxBlobStyled(book){await loadScript(LIB.exceljs);const wb=new E
     const argb=h=>({argb:'FF'+String(h).replace('#','').toUpperCase().slice(0,6)});
     Object.entries(sh.cells).forEach(([k,c])=>{const cell=ws.getCell(k);const v=vals[k];
       if(c.f){const res=(typeof v==='string'&&v.startsWith('#'))?undefined:(isNum(v)?+v:v);cell.value={formula:c.f.slice(1),result:res}}else if(c.v!==''&&c.v!=null)cell.value=isNum(c.v)&&!(typeof c.v==='string'&&/^0\d/.test(c.v))?+c.v:c.v;
-      const s=c.s;if(!s)return;const font={};if(s.b)font.bold=true;if(s.i)font.italic=true;if(s.u)font.underline=true;if(s.st)font.strike=true;if(s.fs)font.size=s.fs;if(s.ff)font.name=s.ff;if(s.c)font.color=argb(s.c);if(Object.keys(font).length)cell.font=font;
+      const s=c.s;if(!s)return;const font={name:s.ff||'Calibri'};if(s.b)font.bold=true;if(s.i)font.italic=true;if(s.u)font.underline=true;if(s.st)font.strike=true;if(s.fs)font.size=s.fs;if(s.ff)font.name=s.ff;if(s.c)font.color=argb(s.c);if(Object.keys(font).length>1||s.ff)cell.font=font;
       if(s.bg)cell.fill={type:'pattern',pattern:'solid',fgColor:argb(s.bg)};const al={};if(s.al)al.horizontal=s.al;if(s.va)al.vertical=s.va;if(s.wrap)al.wrapText=true;if(Object.keys(al).length)cell.alignment=al;
       if(s.bd){const b={};const W={1:'thin',2:'medium',3:'thick'};for(const [x,n] of [['t','top'],['r','right'],['b','bottom'],['l','left']])if(s.bd[x])b[n]={style:W[s.bd[x][0]]||'thin',color:argb(s.bd[x][1])};cell.border=b}
       const nf=s.fmt?{num:'#,##0.00',int:'#,##0',cur:'"₱"#,##0.00',pct:'0.0%'}[s.fmt]:s.nf;if(nf)cell.numFmt=nf});
-    (sh.merges||[]).forEach(m=>{try{ws.mergeCells(m)}catch(e){}})});
+    (sh.merges||[]).forEach(m=>{try{ws.mergeCells(m)}catch(e){}});
+    /* print settings travel with the file: paper, landscape, fit to page, margins, print area, gridlines */
+    const p=sh.page;if(p){ws.pageSetup={...ws.pageSetup,orientation:p.orientation||'portrait',paperSize:p.paperSize||9,fitToPage:!!p.fitToPage,fitToWidth:p.fitToWidth??1,fitToHeight:p.fitToHeight??1,horizontalCentered:true,...(p.margins?{margins:p.margins}:{}),...(p.printArea?{printArea:p.printArea}:{})};ws.views=[{showGridLines:p.showGrid!==false}]}});
   const buf=await wb.xlsx.writeBuffer();return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}
 async function xlsxBlob(book){try{return await xlsxBlobStyled(book)}catch(e){console.warn('Styled export failed, using basic export',e);return xlsxBlobBasic(book)}}
 </script>
@@ -4167,6 +4171,172 @@ document.addEventListener('pointerdown',e=>{if(e.button>0||!e.target.closest||e.
   /* on a phone the finger may want to scroll: select it, then the Move button drags it */
   if(e.pointerType!=='mouse'){window._foDragEnd=Date.now()+400;showImgBar(hit);return}
   showImgBar(hit);WP.dragFloat(hit,e)},true);
+</script>
+<style>
+/* ================= Spreadsheet templates, marks, PDF / image / share ================= */
+.xmark{display:flex;gap:4px;align-items:center}
+.xmark .rb{min-width:34px;font-weight:700;font-size:15px;justify-content:center}
+.xmark .rb.ok{color:#12A150}.xmark .rb.bad{color:#DC2626}.xmark .rb.na{color:#B42318;font-size:11px}.xmark .rb.box{color:#667085}
+.xtpl{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.xtpl button{display:flex;gap:10px;align-items:flex-start;text-align:left;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);cursor:pointer;transition:border-color .15s,box-shadow .15s;min-width:0}
+.xtpl button:hover,.xtpl button:focus-visible{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.xtpl b{display:block;font-size:13.5px;line-height:1.3}.xtpl span{display:block;font-size:12px;color:var(--ink-3);margin-top:3px;line-height:1.35}
+.xtpl svg{flex:none;width:20px;height:20px;color:var(--accent);margin-top:1px}
+.xform{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;margin-top:4px}
+.xform label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-2);min-width:0}
+.xform .full{grid-column:1/-1}
+@media (max-width:560px){.xtpl,.xform{grid-template-columns:1fr}}
+</style>
+<script>
+/* ---------- Equipment Inventory Checklist (same look as the company's EIC file) ---------- */
+const EIC={};
+EIC.items=[['System Unit W/ 12V Power Supply',1],['Monitor',1],['Mouse and Keyboard',1],['UPS',1],['I/O Board W/ 12V Power Supply',1],['Vehicle Detector',2],['Card Reader W/ 12V Power Supply',1],['ANPR Camera W/ 12V Power Supply',1],['Barrier Board',1],['Barrier Arm',1],['AVR',1],['Cash Drawer',1],['Receipt Printer',1],['Scanner',1],['Customer Display',1],['Web Cam',1],['Exit CCTV W/ 12V Power Supply',1],['Kiosk Fan',2],['CPU Fan',1],['Cashino Printer W/ 12V Power Supply',1]];
+EIC.groups=[{title:'Gate 1 & Gate 2',loc:'Gate 1 & 2',cols:['Gate 1 Entrance','Gate 1 Exit','Gate 2 Entrance','Gate 2 Exit']},{title:'Gate 3 & Gate 4',loc:'Gate 3 & 4',cols:['Gate 3 Entrance','Gate 3 Exit','Gate 4 Entrance','Gate 4 Exit']},{title:'Gate 5 & Terminal',loc:'Gate 5 & Terminal',cols:['Gate 5 Entrance','Gate 5 Exit','Terminal']}];
+/* how each mark looks, in the editor, in Excel and in the PDF */
+const XMARK={'✓':{c:'#12A150',b:1},'X':{c:'#DC2626',b:1},'☐':{c:'#667085'},'N/A':{c:'#B42318',b:1,bg:'#FFF1F1'}};
+const XMARK_ORDER=['','✓','X','☐','N/A'];
+EIC.px=w=>Math.round(w*7+5);EIC.ph=pt=>Math.round(pt*4/3);
+EIC.sheet=(g,o)=>{const n=g.cols.length,last=2+n+1;const L=c=>colName(c);const cells={},merges=[];const set=(c,r,v,s)=>{cells[refKey(c,r)]={v,s:{ff:'Calibri',...s}}};
+  const line='#D7E0EC',BD={t:[1,line],r:[1,line],b:[1,line],l:[1,line]};
+  set(0,0,'DELTECH PARKING SYSTEMS AND SOLUTIONS INC.',{b:1,fs:11,c:'#155EEF',va:'middle'});merges.push(`A1:${L(last)}1`);
+  set(0,1,'EQUIPMENT INVENTORY CHECKLIST',{b:1,fs:16,c:'#172033',va:'middle'});merges.push(`A2:${L(last)}2`);
+  [['Checklist No.',o.no],['Company',o.company],['Location',g.loc],['Date',o.date]].forEach(([k,v],i)=>{set(0,2+i,k,{b:1,fs:9,c:'#40516D',va:'middle'});set(1,2+i,v||'',{fs:9,c:'#172033',va:'middle'});merges.push(`B${3+i}:${L(last)}${3+i}`)});
+  set(0,6,'✓',{b:1,fs:12,c:'#FFFFFF',bg:'#16A34A',al:'center',va:'middle',bd:{t:[2,'#16A34A'],r:[2,'#16A34A'],b:[2,'#16A34A'],l:[2,'#16A34A']}});
+  set(1,6,'Check = Working / OK',{fs:8,c:'#667085',bg:'#F8FAFC',va:'middle'});
+  set(2,6,'☐',{b:1,fs:12,c:'#64748B',bg:'#FFFFFF',al:'center',va:'middle',bd:{t:[2,'#CBD5E1'],r:[2,'#CBD5E1'],b:[2,'#CBD5E1'],l:[2,'#CBD5E1']}});
+  set(3,6,'Box = Not Applicable',{fs:8,c:'#667085',bg:'#F8FAFC',va:'middle'});
+  set(4,6,'X',{b:1,fs:12,c:'#DC2626',bg:'#FFF1F2',al:'center',va:'middle',bd:{t:[2,'#DC2626'],r:[2,'#DC2626'],b:[2,'#DC2626'],l:[2,'#DC2626']}});
+  set(5,6,'X = Damage / Issue   ·   N/A = Closed / Not available',{fs:8,c:'#667085',bg:'#F8FAFC',va:'middle'});merges.push(`F7:${L(last)}7`);
+  set(0,7,g.title,{b:1,fs:11,c:'#155EEF',bg:'#F4F8FF',va:'middle'});merges.push(`A8:${L(last)}8`);
+  ['No.','Qty.','Description',...g.cols,'Recommendation / Remarks'].forEach((h,c)=>set(c,8,h,{b:1,fs:8,c:'#40516D',bg:'#EAF2FF',al:'center',va:'middle',wrap:1,bd:BD}));
+  EIC.items.forEach(([d,q],i)=>{const r=9+i;set(0,r,i+1,{fs:8,c:'#172033',al:'center',va:'middle',bd:BD});set(1,r,String(q),{fs:8,c:'#172033',al:'center',va:'middle',bd:BD});set(2,r,d,{fs:8,c:'#172033',va:'middle',wrap:1,bd:BD});
+    for(let k=0;k<n;k++)set(3+k,r,'',{fs:11,al:'center',va:'middle',bd:BD,mk:1});set(last,r,'',{fs:8,c:'#172033',va:'middle',wrap:1,bd:BD})});
+  const fr=9+EIC.items.length+1;const tb={t:[1,'#CBD5E1']};const half=Math.ceil((last+1)/2);
+  set(0,fr,'Made By: '+(o.by||''),{b:1,fs:8,c:'#40516D',va:'middle',bd:tb});merges.push(`A${fr+1}:${L(half-1)}${fr+1}`);for(let c=1;c<half;c++)set(c,fr,'',{bd:tb});
+  set(half,fr,'Checked By: ______________________________',{b:1,fs:8,c:'#40516D',va:'middle',bd:tb});merges.push(`${L(half)}${fr+1}:${L(last)}${fr+1}`);for(let c=half+1;c<=last;c++)set(c,fr,'',{bd:tb});
+  const colW={0:EIC.px(9.9),1:EIC.px(15),2:EIC.px(28),[last]:EIC.px(34)};for(let k=0;k<n;k++)colW[3+k]=EIC.px(15);
+  const rowH={1:EIC.ph(21),6:EIC.ph(24),[fr]:EIC.ph(20.1)};for(let r=8;r<9+EIC.items.length;r++)rowH[r]=EIC.ph(21.95);
+  return{name:g.title,cells,colW,rowH,merges,defW:EIC.px(15),page:{orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:1,margins:{left:0.15,right:0.15,top:0.2,bottom:0.2,header:0.1,footer:0.1},printArea:`A1:${L(last)}${fr+1}`,showGrid:false}}};
+EIC.book=o=>EIC.groups.map(g=>EIC.sheet(g,o));
+EIC.longDate=()=>new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+EIC.no=()=>{const d=isoToday().replace(/-/g,'');const n=(S.files||[]).filter(f=>!f.trashed&&String(f.name||'').startsWith('EIC-'+d)).length+1;return`EIC-${d}-${String(n).padStart(3,'0')}`};
+
+/* ---------- template picker for New spreadsheet ---------- */
+const XTPL={eic:{label:'Equipment Inventory Checklist',desc:'Gate-by-gate equipment check with ✓, X, ☐ and N/A marks. Prints on one A4 page per sheet.',icon:'check'},blank:{label:'Blank spreadsheet',desc:'Start from an empty sheet.',icon:'sheet'}};
+const lastScrim=()=>[...document.querySelectorAll('.scrim')].pop();
+async function newSheetFromTemplate(){
+  const pr=modal({title:'New spreadsheet',body:`<div class="xtpl">${Object.entries(XTPL).map(([k,t])=>`<button type="button" data-xt="${k}">${I(t.icon)}<div><b>${esc(t.label)}</b><span>${esc(t.desc)}</span></div></button>`).join('')}</div>`,
+    actions:[{label:'Cancel',cls:'ghost',value:()=>null},{label:'Open',cls:'primary xt-go',value:sc=>sc._pick||'blank'}]});
+  const sc=lastScrim();if(sc){const go=sc.querySelector('.xt-go');if(go)go.style.display='none';sc.querySelectorAll('[data-xt]').forEach(b=>b.onclick=()=>{sc._pick=b.dataset.xt;go.click()});sc.querySelector('[data-xt]')?.focus()}
+  return pr};
+async function eicDialog(){const p=eicDialog0();const sc=lastScrim();const st=sc?.querySelector('#eicSite');if(st)st.onchange=()=>{const co=sc.querySelector('#eicCo');co.value=SITE_COMPANY[normSite(st.value)]||co.value};return p}
+function eicDialog0(){const sites=(S.config.sites||[]);const mine=S.profiles[S.me?.id||'me']?.site;const def=mine&&sites.includes(mine)?mine:sites[0]||'';
+  return modal({title:'Equipment Inventory Checklist',body:`<div class="xform">
+    <label class="full">Site<select class="select input" id="eicSite">${sites.map(s=>`<option ${s===def?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
+    <label class="full">Company<input class="input" id="eicCo" value="${esc(SITE_COMPANY[normSite(def)]||'')}"></label>
+    <label>Checklist No.<input class="input" id="eicNo" value="${esc(EIC.no())}"></label>
+    <label>Date<input class="input" id="eicDate" value="${esc(EIC.longDate())}"></label>
+    <label class="full">Made by<input class="input" id="eicBy" value="${esc(S.me?.name||'')}"></label></div>
+    <p class="muted" style="margin:10px 0 0;font-size:12.5px">Three sheets are made: Gate 1 &amp; 2, Gate 3 &amp; 4, Gate 5 &amp; Terminal. Rename gates or add rows any time.</p>`,
+    actions:[{label:'Cancel',cls:'ghost',value:()=>null},{label:'Create checklist',cls:'primary',value:sc=>({site:sc.querySelector('#eicSite')?.value||'',company:sc.querySelector('#eicCo').value.trim(),no:sc.querySelector('#eicNo').value.trim(),date:sc.querySelector('#eicDate').value.trim(),by:sc.querySelector('#eicBy').value.trim()})}]})}
+async function startEic(){const o=await eicDialog();if(!o)return;
+  const ed=EDITORS.excel;ed.newBlank=true;S.open.excel=null;ed.mount($('#view'),true);
+  X.book=EIC.book(o);X.si=0;X.sel={c:3,r:9,c2:3,r2:9};X.fresh=false;X.dirty=true;ed.render();
+  const nm=$('#edName-sheet');if(nm)nm.value=(o.no||'EIC')+'.xlsx';setSaveState('sheet','Not saved');X.site=o.site;
+  toast('Checklist ready. Select cells and tap ✓, X, ☐ or N/A.')}
+
+/* ---------- marks: tap a selected mark cell to cycle, or use the Mark buttons on a selection ---------- */
+const XM={};
+XM.apply=(cell,v)=>{const s={...(cell.s||{})};delete s.c;delete s.b;delete s.bg;const m=XMARK[v];if(m){s.c=m.c;if(m.b)s.b=1;if(m.bg)s.bg=m.bg}s.fs=s.fs||11;s.al=s.al||'center';s.mk=1;cell.v=v;delete cell.f;cell.s=s};
+XM.setSel=v=>{const ed=EDITORS.excel;const sh=shX();ed.snap();const r0=Math.min(X.sel.r,X.sel.r2),r1=Math.max(X.sel.r,X.sel.r2),c0=Math.min(X.sel.c,X.sel.c2),c1=Math.max(X.sel.c,X.sel.c2);
+  for(let r=r0;r<=r1;r++)for(let c=c0;c<=c1;c++){const k=refKey(c,r);const cell=sh.cells[k]||(sh.cells[k]={v:''});XM.apply(cell,v)}ed.render()};
+/* Open / Closed for a whole entrance or exit column */
+XM.toggleClosed=()=>{const sh=shX();const ed=EDITORS.excel;const c0=Math.min(X.sel.c,X.sel.c2),c1=Math.max(X.sel.c,X.sel.c2);let done=0;ed.snap();
+  for(let c=c0;c<=c1;c++){const marks=Object.keys(sh.cells).map(k=>({k,p:parseRef(k)})).filter(o=>o.p.c===c&&sh.cells[o.k].s?.mk);if(!marks.length)continue;
+    const hr=Math.min(...marks.map(o=>o.p.r))-1;if(hr<0)continue;const hk=refKey(c,hr);const head=sh.cells[hk]||(sh.cells[hk]={v:'',s:{}});const txt=String(head.v||'');const closed=/\nCLOSED$/i.test(txt)||/\bCLOSED$/i.test(txt);
+    const hs={...(head.s||{})};
+    if(closed){head.v=txt.replace(/\s*CLOSED$/i,'');hs.c='#40516D';hs.bg='#EAF2FF';marks.forEach(o=>{if(sh.cells[o.k].v==='N/A')XM.apply(sh.cells[o.k],'')})}
+    else{head.v=txt+'\nCLOSED';hs.c='#B42318';hs.bg='#FFF1F1';hs.wrap=1;marks.forEach(o=>XM.apply(sh.cells[o.k],'N/A'))}
+    head.s=hs;done++}
+  if(!done){X.undo.pop();toast('Select a cell in an entrance or exit column first.');return}ed.render();toast(done>1?'Columns updated':'Column updated')};
+XM.isMark=cell=>!!(cell&&cell.s?.mk);
+/* tap a mark cell that is already selected to change its mark: blank → ✓ → X → ☐ → N/A → blank */
+document.addEventListener('pointerdown',e=>{const td=e.target.closest&&e.target.closest('#sheet td[data-k]');if(!td||e.button>0||X.editing||e.shiftKey)return;const k=td.dataset.k;
+  const single=X.sel&&X.sel.c===X.sel.c2&&X.sel.r===X.sel.r2&&refKey(X.sel.c,X.sel.r)===k;const cell=shX().cells[k];if(!single||!XM.isMark(cell))return;
+  const i=XMARK_ORDER.indexOf(String(cell.v||''));EDITORS.excel.snap();XM.apply(cell,XMARK_ORDER[(i+1)%XMARK_ORDER.length]);XM.cycled=Date.now();setTimeout(()=>EDITORS.excel.render(),0)},true);
+document.addEventListener('dblclick',e=>{if(Date.now()-(XM.cycled||0)<600&&e.target.closest&&e.target.closest('#sheet')){e.stopPropagation();e.preventDefault()}},true);
+
+/* ---------- keep print settings when a file is opened and saved again ---------- */
+{const _imp=importXlsxStyled;importXlsxStyled=async function(buf){const book=await _imp.apply(this,arguments);try{const wb=new ExcelJS.Workbook();await wb.xlsx.load(buf);let i=0;
+    wb.eachSheet(ws=>{const sh=book[i++];if(!sh)return;const ps=ws.pageSetup||{};const v=(ws.views||[])[0]||{};
+      sh.page={orientation:ps.orientation||'portrait',paperSize:ps.paperSize||9,fitToPage:!!ps.fitToPage,fitToWidth:ps.fitToWidth??1,fitToHeight:ps.fitToHeight??1,margins:ps.margins||null,printArea:ps.printArea||null,showGrid:v.showGridLines!==false};
+      /* mark cells (not the legend row) can be tapped again to change the mark */
+      const legend=new Set(Object.entries(sh.cells).filter(([k,c])=>/ = /.test(String(c.v||''))).map(([k])=>parseRef(k).r));
+      Object.entries(sh.cells).forEach(([k,c])=>{if(c.v in XMARK&&!legend.has(parseRef(k).r)){c.s=c.s||{};c.s.mk=1}})})}catch(e){}return book}}
+/* ---------- sheet → printed pages (PDF / PNG), drawn exactly like the sheet ---------- */
+const XR={};
+XR.paper={1:[8.5,11],5:[8.5,14],9:[8.27,11.69],8:[11.69,16.54]};
+XR.range=sh=>{let r1=0,c1=0;const pa=sh.page?.printArea;if(pa){const [a,b]=String(pa).replace(/\$/g,'').split(':');const A=parseRef(a),B=parseRef(b||a);if(A&&B)return{c0:A.c,r0:A.r,c1:B.c,r1:B.r}}
+  Object.entries(sh.cells).forEach(([k,c])=>{if(c.v===''&&!c.f&&!c.s?.bg&&!c.s?.bd)return;const p=parseRef(k);r1=Math.max(r1,p.r);c1=Math.max(c1,p.c)});(sh.merges||[]).forEach(m=>{const B=parseRef(m.split(':')[1]||m);if(B){r1=Math.max(r1,B.r);c1=Math.max(c1,B.c)}});return{c0:0,r0:0,c1,r1}};
+XR.table=sh=>{const R=XR.range(sh),vals=evalSheet(sh),mi=mergeInfo(sh),dw=sh.defW||100;const grid=!!sh.page?.showGrid;const FF="Calibri,Carlito,'Segoe UI',Arial,sans-serif";
+  const ws=[];for(let c=R.c0;c<=R.c1;c++)ws.push(sh.colW?.[c]||dw);const tw=ws.reduce((a,b)=>a+b,0);const hs=[];
+  let h=`<table style="border-collapse:collapse;table-layout:fixed;width:${tw}px;font-family:${FF};font-size:11pt;color:#000"><colgroup>${ws.map(w=>`<col style="width:${w}px">`).join('')}</colgroup>`;
+  for(let r=R.r0;r<=R.r1;r++){const rh=sh.rowH?.[r]||20;hs.push(rh);h+=`<tr style="height:${rh}px">`;
+    for(let c=R.c0;c<=R.c1;c++){const k=refKey(c,r);if(mi.cover.has(k))continue;const sp=mi.anchor[k];const cell=sh.cells[k];const st=cell?.s||{};const v=vals[k];
+      const bd=x=>st.bd&&st.bd[x]?`${st.bd[x][0]}px solid ${st.bd[x][1]}`:(grid?'1px solid #D9D9D9':'none');
+      const css=`border-top:${bd('t')};border-right:${bd('r')};border-bottom:${bd('b')};border-left:${bd('l')};padding:0 4px;overflow:hidden;`+(st.wrap?'white-space:pre-wrap;word-wrap:break-word;':'white-space:nowrap;')
+        +(st.b?'font-weight:700;':'')+(st.i?'font-style:italic;':'')+(st.u?'text-decoration:underline;':'')+(st.c?`color:${st.c};`:'')+(st.bg?`background:${st.bg};`:'')+`text-align:${st.al||(isNum(v)?'right':'left')};`+`vertical-align:${st.va||'bottom'};`+(st.fs?`font-size:${st.fs}pt;`:'')+(st.ff?`font-family:'${String(st.ff).replace(/'/g,'')}',${FF};`:'')+'line-height:1.2';
+      h+=`<td${sp?` colspan="${sp.cs}" rowspan="${sp.rs}"`:''} style="${css}">${esc(fmtCell(v,st))}</td>`}h+='</tr>'}
+  return{html:h+'</table>',w:tw,rows:hs}};
+XR.pages=(sh,scale0)=>{const p=sh.page||{orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0};const sz=XR.paper[p.paperSize]||XR.paper[9];const land=p.orientation==='landscape';
+  const PW=Math.round((land?sz[1]:sz[0])*96),PH=Math.round((land?sz[0]:sz[1])*96);const m=p.margins||{left:.5,right:.5,top:.6,bottom:.6};const ml=m.left*96,mr=m.right*96,mt=m.top*96,mb=m.bottom*96;
+  const T=XR.table(sh);const th=T.rows.reduce((a,b)=>a+b,0);const aw=PW-ml-mr,ah=PH-mt-mb;
+  let k=Math.min(1,aw/T.w);if(p.fitToPage&&(p.fitToHeight===1||p.fitToHeight==null))k=Math.min(k,ah/th);if(!p.fitToPage)k=Math.min(1,aw/T.w);
+  /* rows per page */
+  const pages=[];let y=0,start=0,acc=0;T.rows.forEach((h,i)=>{if((acc+h)*k>ah&&acc>0){pages.push([start,i,y]);y+=acc;start=i;acc=0}acc+=h});pages.push([start,T.rows.length,y]);
+  const x0=ml+Math.max(0,(aw-T.w*k)/2);
+  return pages.map(([a,b,top])=>{const hh=T.rows.slice(a,b).reduce((s,v)=>s+v,0);return{PW,PH,html:`<div style="position:absolute;left:${x0}px;top:${mt}px;width:${T.w*k+3}px;height:${hh*k+3}px;overflow:hidden"><div style="position:absolute;left:0;top:${-top*k}px;transform:scale(${k});transform-origin:0 0">${T.html}</div></div>`}})};
+XR.draw=async(pg,scale)=>{const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${pg.PW}" height="${pg.PH}"><foreignObject x="0" y="0" width="${pg.PW}" height="${pg.PH}"><div xmlns="http://www.w3.org/1999/xhtml" style="position:relative;width:${pg.PW}px;height:${pg.PH}px;background:#fff">%%BODY%%</div></foreignObject></svg>`;
+  const img=new Image();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.replace('%%BODY%%',(()=>{const d=document.createElement('div');d.innerHTML=pg.html;return [...d.childNodes].map(n=>new XMLSerializer().serializeToString(n)).join('')})()));await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(new Error('The sheet could not be drawn.'))});
+  const cv=document.createElement('canvas');cv.width=Math.round(pg.PW*scale);cv.height=Math.round(pg.PH*scale);const ctx=cv.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
+  if(PX.isSafari){ctx.drawImage(img,0,0,cv.width,cv.height);await new Promise(r=>setTimeout(r,120))}ctx.drawImage(img,0,0,cv.width,cv.height);return cv};
+XR.sheets=which=>which==='all'?X.book:[shX()];
+XR.pdf=async(sheets,title)=>{if(!window.PDFLib)await loadScript(LIB.pdflib);const pdf=await PDFLib.PDFDocument.create();pdf.setTitle(title);pdf.setProducer('File Org');
+  for(const sh of sheets)for(const pg of XR.pages(sh)){const cv=await XR.draw(pg,2);const jpg=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.92));const im=await pdf.embedJpg(new Uint8Array(await jpg.arrayBuffer()));const page=pdf.addPage([pg.PW*.75,pg.PH*.75]);page.drawImage(im,{x:0,y:0,width:pg.PW*.75,height:pg.PH*.75})}
+  return new Blob([await pdf.save()],{type:'application/pdf'})};
+XR.pngs=async(sheets,base)=>{const out=[];for(const sh of sheets){const pgs=XR.pages(sh);for(let i=0;i<pgs.length;i++){const cv=await XR.draw(pgs[i],2);const b=await new Promise(r=>cv.toBlob(r,'image/png'));
+    out.push(new File([b],`${base} - ${String(sh.name).replace(/[\\/:*?"<>|]/g,'-')}${pgs.length>1?' ('+(i+1)+')':''}.png`,{type:'image/png'}))}}return out};
+
+/* ---------- buttons: Save as PDF, Save as image, Share to apps ---------- */
+XR.base=()=>($('#edName-sheet')?.value||'spreadsheet').replace(/\.\w+$/,'')||'spreadsheet';
+XR.ask=async(title,formats)=>{const multi=X.book.length>1;return modal({title,body:`<div class="pdf-opts">${formats.map((f,i)=>`<label><input type="radio" name="xf" value="${f.v}" ${i?'':'checked'}><div><b>${f.b}</b><span>${f.s}</span></div></label>`).join('')}</div>
+    ${multi?`<div class="pdf-opts" style="margin-top:10px"><label><input type="radio" name="xw" value="all" checked><div><b>All ${X.book.length} sheets</b><span>${X.book.map(s=>esc(s.name)).join(' · ')}</span></div></label><label><input type="radio" name="xw" value="one"><div><b>This sheet only</b><span>${esc(shX().name)}</span></div></label></div>`:''}`,
+  actions:[{label:'Cancel',cls:'ghost',value:()=>null},{label:'Continue',cls:'primary',value:sc=>({f:(sc.querySelector('input[name="xf"]:checked')||{}).value,w:(sc.querySelector('input[name="xw"]:checked')||{}).value||'all'})}]})};
+XR.make=async(f,w)=>{const base=XR.base();const sheets=XR.sheets(w);
+  if(f==='pdf')return[new File([await XR.pdf(sheets,base)],base+'.pdf',{type:'application/pdf'})];
+  if(f==='png')return XR.pngs(sheets,base);
+  const blob=await xlsxBlob(X.book);return[new File([blob],base+'.xlsx',{type:blob.type})]};
+SHR.readyMany=async files=>{if(files.length===1)return SHR.ready(files[0],files[0].name,files[0].type);const can=(()=>{try{return !!(navigator.canShare&&navigator.canShare({files}))}catch(e){return false}})();
+  const r=await modal({title:'Ready to share',body:`<p style="margin:0 0 8px">${files.length} pictures are ready:</p><ul style="margin:0;padding-left:18px;font-size:12.5px;color:var(--ink-2)">${files.map(f=>`<li style="overflow-wrap:anywhere">${esc(f.name)}</li>`).join('')}</ul>`,actions:[{label:'Download all',cls:'ghost',value:()=>'dl'},...(can?[{label:'Share…',cls:'primary',value:()=>'share'}]:[])]});
+  if(r==='dl'){for(const f of files)await saveDownload(f.name,f);return}if(r==='share'){try{await navigator.share({files})}catch(e){if(e.name!=='AbortError')toast('Could not open the share menu. Download the pictures instead.',true)}}};
+async function sheetSaveAsPdf(){const a=await XR.ask('Save as PDF',[{v:'pdf',b:'PDF',s:'Each sheet on its own page, exactly as it prints.'}]);if(!a)return;const tb=toast('Making the PDF…');
+  try{const [file]=await XR.make('pdf',a.w);tb?.close();const f=X.fileId?fileById(X.fileId):null;
+    if(PDFS.can()){const c=await modal({title:'PDF ready',body:`<p style="margin:0;overflow-wrap:anywhere">${esc(file.name)}</p>`,actions:[{label:'Download',cls:'ghost',value:()=>'dl'},{label:'Save to File Org',cls:'primary',value:()=>'lib'}]});
+      if(c==='dl')await saveDownload(file.name,file);else if(c==='lib'){W.site=W.site||X.site;await PDFS.saveToLibrary(file,f,XR.base());toast('PDF saved to File Org')}}
+    else await saveDownload(file.name,file)}catch(e){console.error(e);toast('Could not make the PDF. '+(e.message||''),true)}}
+async function sheetSaveAsImage(){const a=await XR.ask('Save as image',[{v:'png',b:'Picture (PNG)',s:'Sharp picture of each sheet, good for chat and quick viewing.'}]);if(!a)return;const tb=toast('Making the picture…');
+  try{const files=await XR.make('png',a.w);tb?.close();if(files.length===1)await saveDownload(files[0].name,files[0]);else await SHR.readyMany(files)}catch(e){console.error(e);toast('Could not make the picture. '+(e.message||''),true)}}
+async function sheetShare(){const a=await XR.ask('Share',[{v:'pdf',b:'PDF (recommended)',s:'Looks the same in Viber, Messenger, Facebook and on every phone.'},{v:'png',b:'Picture (PNG)',s:'Shows right away in the chat, no file to open.'},{v:'xlsx',b:'Excel file (.xlsx)',s:'For people who will edit it in Excel.'}]);if(!a)return;
+  const tb=toast('Preparing…');try{const files=await XR.make(a.f,a.w);tb?.close();await SHR.readyMany(files)}catch(e){console.error(e);toast('Could not prepare the file. '+(e.message||''),true)}}
+
+/* ---------- wire into the spreadsheet editor ---------- */
+new MutationObserver(()=>{const ex=document.getElementById('xExport');if(!ex||document.getElementById('xPdf'))return;
+  ex.insertAdjacentHTML('afterend',`<button class="btn sm" type="button" id="xPdf">${I('pdf')}Save as PDF</button><button class="btn sm" type="button" id="xImg">${I('image')}Save as image</button><button class="btn sm" type="button" id="xShareApp">${SHR.icon}Share to apps</button>`);
+  $('#xPdf').onclick=sheetSaveAsPdf;$('#xImg').onclick=sheetSaveAsImage;$('#xShareApp').onclick=sheetShare;
+  const nb=document.getElementById('xNew');if(nb)nb.onclick=async()=>{const k=await newSheetFromTemplate();if(k==='eic')startEic();else if(k==='blank'){EDITORS.excel.newBlank=true;EDITORS.excel.mount($('#view'),true)}};
+  const rib=document.querySelector('#view .ribbon');if(rib&&!rib.querySelector('.xmark'))rib.insertAdjacentHTML('beforeend',`<div class="grp xmark" aria-label="Marks"><button class="rb ok" data-xm="✓" title="Working / OK">✓</button><button class="rb bad" data-xm="X" title="Damage / Issue">X</button><button class="rb box" data-xm="☐" title="Not applicable">☐</button><button class="rb na" data-xm="N/A" title="Closed / Not available">N/A</button><button class="rb" data-xm="" title="Clear marks">${I('eraser')}</button><button class="rb" id="xClosed" title="Mark the selected entrance or exit as Closed, or open it again" style="font-size:12px;font-weight:600;min-width:auto;padding:0 10px">Open / Closed</button></div>`);
+  const xc=document.getElementById('xClosed');if(xc)xc.onclick=XM.toggleClosed;
+  rib&&rib.querySelectorAll('[data-xm]').forEach(b=>b.onclick=()=>XM.setSel(b.dataset.xm))}).observe(document.body,{childList:true,subtree:true});
 </script>
 <script>
 /* ================= PDF editor ================= */
