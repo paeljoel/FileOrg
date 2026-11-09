@@ -4248,14 +4248,23 @@ async function startEic(){const o=await eicDialog();if(!o)return;
 /* ---------- marks: tap a selected mark cell to cycle, or use the Mark buttons on a selection ---------- */
 const XM={};
 XM.apply=(cell,v)=>{const s={...(cell.s||{})};delete s.c;delete s.b;delete s.bg;const m=XMARK[v];if(m){s.c=m.c;if(m.b)s.b=1;if(m.bg)s.bg=m.bg}s.fs=s.fs||11;s.al=s.al||'center';s.mk=1;cell.v=v;delete cell.f;cell.s=s};
-XM.setSel=v=>{const ed=EDITORS.excel;const sh=shX();ed.snap();const r0=Math.min(X.sel.r,X.sel.r2),r1=Math.max(X.sel.r,X.sel.r2),c0=Math.min(X.sel.c,X.sel.c2),c1=Math.max(X.sel.c,X.sel.c2);
-  for(let r=r0;r<=r1;r++)for(let c=c0;c<=c1;c++){const k=refKey(c,r);const cell=sh.cells[k]||(sh.cells[k]={v:''});XM.apply(cell,v)}ed.render()};
+/* marks only go into the checklist boxes (rows under an entrance / exit), never over titles, names or the legend */
+XM.slots=sh=>{const out=new Set();const leg=XM.legendRows(sh);const cols=new Set(Object.keys(sh.cells).map(k=>parseRef(k).c));
+  cols.forEach(c=>{const hr=XM.headRow(sh,c);if(hr<0)return;XM.itemRows(sh,hr).forEach(r=>{if(!leg.has(r))out.add(refKey(c,r))})});
+  Object.entries(sh.cells).forEach(([k,c])=>{if(c.s?.mk&&!leg.has(parseRef(k).r))out.add(k)});return out};
+XM.setSel=v=>{const ed=EDITORS.excel;const sh=shX();const ok=XM.slots(sh);const r0=Math.min(X.sel.r,X.sel.r2),r1=Math.max(X.sel.r,X.sel.r2),c0=Math.min(X.sel.c,X.sel.c2),c1=Math.max(X.sel.c,X.sel.c2);
+  const keys=[];for(let r=r0;r<=r1;r++)for(let c=c0;c<=c1;c++){const k=refKey(c,r);if(ok.has(k))keys.push(k)}
+  if(!keys.length){toast('Select the checklist boxes under an entrance or exit first.');return}
+  ed.snap();keys.forEach(k=>XM.apply(sh.cells[k]||(sh.cells[k]={v:''}),v));ed.render();
+  const skipped=(r1-r0+1)*(c1-c0+1)-keys.length;if(skipped>0)toast(`${v||'Cleared'} on ${keys.length} box${keys.length>1?'es':''}. Titles and names were left as they are.`)};
 /* Open / Closed for a whole entrance or exit column */
 /* Open / Closed for a whole entrance or exit column — works on new checklists and on opened Excel files */
 XM.legendRows=sh=>new Set(Object.entries(sh.cells).filter(([k,c])=>/ = /.test(String(c.v||''))).map(([k])=>parseRef(k).r));
 XM.itemRows=(sh,hr)=>{const rows=[];for(let r=hr+1;r<hr+400;r++){const a=sh.cells[refKey(0,r)],b=sh.cells[refKey(2,r)];const has=x=>x&&String(x.v??'').trim()!=='';if(!has(a)&&!has(b))break;rows.push(r)}return rows};
-XM.headRow=(sh,c)=>{const leg=XM.legendRows(sh);let best=-1;Object.entries(sh.cells).forEach(([k,cell])=>{const p=parseRef(k);if(p.c!==c||leg.has(p.r))return;if(/entrance|exit|terminal|booth|gate|lane|kiosk/i.test(String(cell.v||''))&&(best<0||p.r<best)){
-    const below=sh.cells[refKey(0,p.r+1)];if(below&&String(below.v??'').trim()!=='')best=p.r}});return best};
+/* the checklist's table header is the row with "Description" (or "No."); gate columns are the ones between Description and Remarks */
+XM.headRow=(sh,c)=>{const leg=XM.legendRows(sh);let hr=-1;Object.entries(sh.cells).forEach(([k,cell])=>{const p=parseRef(k);if(leg.has(p.r))return;if(/^\s*description\s*$/i.test(String(cell.v||''))&&(hr<0||p.r<hr))hr=p.r});
+  if(hr>=0){const h=String(sh.cells[refKey(c,hr)]?.v||'').trim();if(!h||/^(no\.?|qty\.?|quantity|description|item|recommendation.*|remarks?.*)$/i.test(h))return -1;return hr}
+  let best=-1;Object.entries(sh.cells).forEach(([k,cell])=>{const p=parseRef(k);if(p.c!==c||leg.has(p.r))return;if(/entrance|exit|terminal|booth/i.test(String(cell.v||''))&&(best<0||p.r<best))best=p.r});return best};
 XM.toggleClosed=()=>{const sh=shX();const ed=EDITORS.excel;const c0=Math.min(X.sel.c,X.sel.c2),c1=Math.max(X.sel.c,X.sel.c2);let done=0,state='';ed.snap();
   for(let c=c0;c<=c1;c++){const hr=XM.headRow(sh,c);if(hr<0)continue;const rows=XM.itemRows(sh,hr);if(!rows.length)continue;
     const hk=refKey(c,hr);const head=sh.cells[hk];const txt=String(head.v||'');const closed=/CLOSED\s*$/i.test(txt);const hs={...(head.s||{})};
@@ -4340,7 +4349,7 @@ new MutationObserver(()=>{const ex=document.getElementById('xExport');if(!ex||do
   ex.insertAdjacentHTML('afterend',`<button class="btn sm" type="button" id="xPdf">${I('pdf')}Save as PDF</button><button class="btn sm" type="button" id="xImg">${I('image')}Save as image</button><button class="btn sm" type="button" id="xShareApp">${SHR.icon}Share to apps</button>`);
   $('#xPdf').onclick=sheetSaveAsPdf;$('#xImg').onclick=sheetSaveAsImage;$('#xShareApp').onclick=sheetShare;
   const nb=document.getElementById('xNew');if(nb)nb.onclick=async()=>{const k=await newSheetFromTemplate();if(k==='eic')startEic();else if(k==='blank'){EDITORS.excel.newBlank=true;EDITORS.excel.mount($('#view'),true)}};
-  const rib=document.querySelector('#view .ribbon');if(rib&&!rib.querySelector('.xmark'))rib.insertAdjacentHTML('beforeend',`<div class="grp xmark" aria-label="Marks"><button class="rb ok" data-xm="✓" title="Working / OK">✓</button><button class="rb bad" data-xm="X" title="Damage / Issue">X</button><button class="rb box" data-xm="☐" title="Not applicable">☐</button><button class="rb na" data-xm="N/A" title="Closed / Not available">N/A</button><button class="rb" data-xm="" title="Clear marks">${I('eraser')}</button><button class="rb" id="xClosed" title="Mark the selected entrance or exit as Closed, or open it again" style="font-size:12px;font-weight:600;min-width:auto;padding:0 10px">Open / Closed</button></div>`);
+  const rib=document.querySelector('#view .ribbon');if(rib&&!rib.querySelector('.xmark'))rib.insertAdjacentHTML('beforeend',`<div class="grp xmark" aria-label="Marks"><button class="rb ok" data-xm="✓" title="Working / OK">✓</button><button class="rb bad" data-xm="X" title="Damage / Issue">X</button><button class="rb box" data-xm="☐" title="Not applicable">☐</button><button class="rb na" data-xm="N/A" title="Closed / Not available">N/A</button><button class="rb" data-xm="" title="Clear the marks in the selected boxes" style="font-size:12px;font-weight:600;min-width:auto;padding:0 8px;color:var(--ink-2)">Clear marks</button><button class="rb" id="xClosed" title="Mark the selected entrance or exit as Closed, or open it again" style="font-size:12px;font-weight:600;min-width:auto;padding:0 10px">Open / Closed</button></div>`);
   const xc=document.getElementById('xClosed');if(xc)xc.onclick=XM.toggleClosed;
   rib&&rib.querySelectorAll('[data-xm]').forEach(b=>b.onclick=()=>XM.setSel(b.dataset.xm))}).observe(document.body,{childList:true,subtree:true});
 </script>
