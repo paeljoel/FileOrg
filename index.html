@@ -1444,7 +1444,7 @@ EDITORS.word={
     $('#wRa',v).onclick=()=>{const q=$('#wFq').value,r=$('#wRq').value;if(!q)return;let n=0;const walk=document.createTreeWalker(paper,NodeFilter.SHOW_TEXT);const re=new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');let t;while(t=walk.nextNode()){const before=t.nodeValue;const after=before.replace(re,()=>{n++;return r});if(after!==before)t.nodeValue=after}toast(`Replaced ${n} occurrence${n===1?'':'s'}`);mark();countHits()};
     // table context menu
     paper.addEventListener('contextmenu',e=>{const td=e.target.closest('td,th');if(!td)return;e.preventDefault();const tr=td.parentNode,tbl=td.closest('table'),idx=[...tr.children].indexOf(td);
-      openMenu(e.clientX,e.clientY,[{label:'Insert row above',icon:'up',run:()=>{tr.before(blankRow(tr));mark()}},{label:'Insert row below',icon:'down',run:()=>{tr.after(blankRow(tr));mark()}},{label:'Insert column left',icon:'plus',run:()=>{[...tbl.rows].forEach(r=>r.children[idx]?.before(document.createElement(r.children[idx].tagName.toLowerCase())));fillEmpty(tbl);mark()}},{label:'Insert column right',icon:'plus',run:()=>{[...tbl.rows].forEach(r=>r.children[idx]?.after(document.createElement(r.children[idx].tagName.toLowerCase())));fillEmpty(tbl);mark()}},'-',{label:'Shade cell',icon:'paint',run:()=>{td.style.background=td.style.background?'':'#E8F1EC';mark()}},{label:'Delete row',icon:'trash',danger:true,run:()=>{tr.remove();mark()}},{label:'Delete column',icon:'trash',danger:true,run:()=>{[...tbl.rows].forEach(r=>r.children[idx]?.remove());mark()}},{label:'Delete table',icon:'trash',danger:true,run:()=>{tbl.remove();mark()}}])});
+      openMenu(e.clientX,e.clientY,[{label:'Insert row above',icon:'up',run:()=>{const b=bandsOf(tbl);tr.before(blankRow(tr.rowIndex===0&&tbl.rows[1]?tbl.rows[1]:tr));rebandTable(tbl,b);mark()}},{label:'Insert row below',icon:'down',run:()=>{const b=bandsOf(tbl);tr.after(blankRow(tr.rowIndex===0&&tbl.rows[1]?tbl.rows[1]:tr));rebandTable(tbl,b);mark()}},{label:'Insert column left',icon:'plus',run:()=>{[...tbl.rows].forEach(r=>{const c=r.children[idx];if(c){const n=emptyCell(c);n.removeAttribute('colspan');c.before(n)}});mark()}},{label:'Insert column right',icon:'plus',run:()=>{[...tbl.rows].forEach(r=>{const c=r.children[idx];if(c){const n=emptyCell(c);n.removeAttribute('colspan');c.after(n)}});mark()}},'-',{label:'Shade cell',icon:'paint',run:()=>{td.style.background=td.style.background?'':'#E8F1EC';mark()}},{label:'Delete row',icon:'trash',danger:true,run:()=>{tr.remove();mark()}},{label:'Delete column',icon:'trash',danger:true,run:()=>{[...tbl.rows].forEach(r=>r.children[idx]?.remove());mark()}},{label:'Delete table',icon:'trash',danger:true,run:()=>{tbl.remove();mark()}}])});
     paper.addEventListener('keyup',syncRibbon);paper.addEventListener('mouseup',syncRibbon);
     paper.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();$('#wSave').click()}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){e.preventDefault();fb.hidden=false;$('#wFq').focus()}if(e.key==='Tab'){e.preventDefault();ex(e.shiftKey?'outdent':'indent')}});
     paper.addEventListener('paste',e=>{const html=e.clipboardData.getData('text/html');if(html){e.preventDefault();ex('insertHTML',cleanHtml(html));mark()}});
@@ -1461,7 +1461,20 @@ EDITORS.word={
       W.dirty=false;setSaveState('doc','Saved '+new Date().toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}));toast('Saved to library')}catch(e){setSaveState('doc','Save failed');toast(e.message||dbErr(e),true)}};
   }
 };
-function blankRow(tr){const r=tr.cloneNode(true);[...r.children].forEach(c=>{c.innerHTML='&nbsp;';c.removeAttribute('style')});return r}
+/* a new row or column looks exactly like its neighbour: same colours, borders, font and size, only the text is empty */
+function emptyCell(td){const c=td.cloneNode(true);c.removeAttribute('rowspan');c.removeAttribute('data-ph');
+  c.querySelectorAll('img,svg,[data-dx="line"]').forEach(e=>e.remove());
+  const blocks=[...c.children].filter(e=>/^(P|DIV|H[1-6]|UL|OL)$/.test(e.tagName));const first=blocks[0];
+  if(first&&!/^(UL|OL)$/.test(first.tagName)){blocks.slice(1).forEach(b=>b.remove());[...c.childNodes].forEach(n=>{if(n!==first&&n.nodeType===3)n.remove()});
+    const tw=document.createTreeWalker(first,NodeFilter.SHOW_TEXT);const ts=[];let t;while((t=tw.nextNode()))ts.push(t);ts.forEach(t=>t.remove());
+    let deep=first;while(deep.firstElementChild&&deep.firstElementChild.tagName==='SPAN')deep=deep.firstElementChild;[...deep.querySelectorAll('br')].forEach(b=>b.remove());deep.appendChild(document.createElement('br'))}
+  else c.innerHTML='<br>';return c}
+function blankRow(tr){const r=tr.cloneNode(false);[...tr.children].forEach(td=>r.appendChild(emptyCell(td)));return r}
+/* keep alternating row colours (banded tables) in order after rows are added */
+function rebandTable(tbl,before){const rows=[...tbl.rows];if(rows.length<3)return;const data=rows.slice(1);
+  const cols=Math.max(...data.map(r=>r.cells.length));for(let j=0;j<cols;j++){const bg=before.map(b=>b[j]).filter(x=>x!==undefined);if(bg.length<2)continue;const A=bg[0],B=bg[1];if(!A||!B||A===B)continue;
+    if(!bg.every((v,i)=>v===(i%2?B:A)))continue;data.forEach((r,i)=>{const c=r.cells[j];if(c)c.style.background=i%2?B:A})}}
+function bandsOf(tbl){return [...tbl.rows].slice(1).map(r=>[...r.cells].map(c=>c.style.background||c.style.backgroundColor||''))}
 function fillEmpty(t){$$('td,th',t).forEach(c=>{if(!c.innerHTML)c.innerHTML='&nbsp;'})}
 function saveSel(){const s=getSelection();return s.rangeCount?s.getRangeAt(0).cloneRange():null}
 function restoreSel(r){$('#paper')?.focus();if(!r)return;const s=getSelection();s.removeAllRanges();s.addRange(r)}
